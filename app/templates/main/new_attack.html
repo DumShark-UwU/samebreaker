@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+{% block title %}Nouvelle attaque — SameBreaker{% endblock %}
+{% block page_title %}Nouvelle attaque{% endblock %}
+
+{% block head %}
+<style>
+  .form-label { display:block; font-size:12px; color:#5a8fa8; margin-bottom:4px; text-transform:uppercase; letter-spacing:.05em; }
+  .form-input { width:100%; padding:9px 12px; border-radius:8px; background:#0d2240;
+                border:1px solid #1a3a5c; color:#cce8f4; font-size:13px; outline:none; transition:.2s; }
+  .form-input:focus { border-color:#00b4d8; box-shadow:0 0 0 2px rgba(0,180,216,.12); }
+  .form-input::placeholder { color:#5a8fa8; }
+  select.form-input option { background:#0d2240; }
+  .detect-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px;
+                  background:#0d2240; border:1px solid #1a3a5c; cursor:pointer; font-size:12px;
+                  color:#cce8f4; transition:.15s; }
+  .detect-chip:hover { border-color:#00b4d8; color:#00b4d8; }
+  .detect-chip.selected { border-color:#00b4d8; background:#00b4d8; color:#050b14; }
+  .mode-btn { padding:8px 14px; border-radius:8px; border:1px solid #1a3a5c; background:#0d2240;
+              color:#5a8fa8; font-size:13px; cursor:pointer; transition:.15s; }
+  .mode-btn:hover { border-color:#00b4d8; color:#cce8f4; }
+  .mode-btn.active { border-color:#00b4d8; background:#00b4d8; color:#050b14; font-weight:600; }
+  .workload-chip { padding:6px 14px; border-radius:8px; border:1px solid #1a3a5c; background:#0d2240;
+                   color:#5a8fa8; font-size:12px; cursor:pointer; transition:.15s; }
+  .workload-chip:hover { border-color:#00b4d8; color:#cce8f4; }
+  .workload-chip.active { border-color:#00b4d8; background:#00b4d8; color:#050b14; font-weight:600; }
+  .gpu-busy { opacity:0.4; pointer-events:none; cursor:not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if prefill %}
+<script>window._PREFILL = {{ prefill | tojson }};</script>
+{% endif %}
+<form method="POST" enctype="multipart/form-data" class="w-full flex flex-col gap-5">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+  <input type="hidden" name="hash_type"    id="hash_type_hidden"    value="0" />
+  <input type="hidden" name="hash_type_name" id="hash_type_name_hidden" value="" />
+  <input type="hidden" name="attack_mode"  id="attack_mode_hidden"  value="0" />
+
+  <!-- Nom du job -->
+  <div class="rounded-xl border p-5 flex flex-col gap-2" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Nom du job</label>
+    <input name="name" id="job-name" class="form-input" placeholder="ex: MD5 rockyou" />
+  </div>
+
+  <!-- Hash input + détection -->
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="form-label" style="margin:0">Hash(es) à cracker</label>
+        <div class="flex gap-1">
+          <button type="button" onclick="setHashMode('paste')" id="hash-tab-paste"
+                  class="btn btn-primary btn-xs">Coller</button>
+          <button type="button" onclick="setHashMode('file')" id="hash-tab-file"
+                  class="btn btn-secondary btn-xs">Fichier .txt</button>
+        </div>
+      </div>
+      <div id="hash-paste-zone">
+        <textarea id="hash_content" name="hash_content" rows="5"
+                  class="form-input font-mono resize-none"
+                  placeholder="Un hash par ligne&#10;5f4dcc3b5aa765d61d8327deb882cf99&#10;..."></textarea>
+      </div>
+      <div id="hash-file-zone" class="hidden">
+        <label class="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-lg border-2 border-dashed p-6 transition-all"
+               style="border-color:#1a3a5c; background:#050b14;"
+               ondragover="event.preventDefault(); this.style.borderColor='#00b4d8'"
+               ondragleave="this.style.borderColor='#1a3a5c'"
+               ondrop="handleHashDrop(event)">
+          <svg class="w-8 h-8" fill="none" stroke="#5a8fa8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          <span class="text-sm text-ink-muted" id="hash-file-label">Glisser un fichier .txt ou cliquer</span>
+          <input type="file" name="hash_file_upload" accept=".txt,.hash,.lst" class="hidden"
+                 onchange="updateHashFileLabel(this)" />
+        </label>
+      </div>
+    </div>
+
+    <!-- Type de hash + détection -->
+    <div class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="form-label" style="margin:0">Type de hash</label>
+        <button type="button" onclick="detectHash()" id="btn-detect" class="btn btn-primary btn-xs">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+          Détecter
+        </button>
+      </div>
+      <div id="selected-type-banner" class="hidden flex items-center justify-between px-3 py-2 rounded-lg"
+           style="background:#0d3a1a; border:1px solid #1a5c30;">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-ok font-medium">Type sélectionné :</span>
+          <span class="text-xs font-mono text-ok font-bold" id="selected-type-label">—</span>
+        </div>
+        <button type="button" onclick="clearHashType()" class="btn btn-secondary btn-xs">Changer</button>
+      </div>
+      <div id="detect-results" class="hidden flex flex-col gap-1"></div>
+      <div id="manual-type-input" class="flex gap-2 items-center">
+        <span class="text-xs text-ink-muted whitespace-nowrap">-m manuel</span>
+        <input id="hash_type_display" type="number" min="0" class="form-input w-28" placeholder="0"
+               oninput="onManualTypeInput(this.value)" />
+        <input id="hash_type_name_display" type="text" class="form-input flex-1"
+               placeholder="Nom (optionnel)"
+               oninput="document.getElementById('hash_type_name_hidden').value=this.value" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Mode d'attaque -->
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Mode d'attaque</label>
+    <div class="flex flex-wrap gap-2" id="mode-btns">
+      {% for mode_id, mode_name in attack_modes.items() %}
+      <button type="button" onclick="setMode({{ mode_id }})"
+              class="mode-btn {% if mode_id == 0 %}active{% endif %}"
+              data-mode="{{ mode_id }}">{{ mode_id }} — {{ mode_name }}</button>
+      {% endfor %}
+    </div>
+
+    <div id="opt-wordlist" class="flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <label class="form-label" style="margin:0">Wordlist</label>
+        <div class="flex gap-1">
+          <button type="button" onclick="setWlMode('select')" id="wl-tab-select" class="btn btn-primary btn-xs">Sélectionner</button>
+          <button type="button" onclick="setWlMode('upload')" id="wl-tab-upload" class="btn btn-secondary btn-xs">Importer</button>
+        </div>
+      </div>
+      <div id="wl-select-zone">
+        <select name="wordlist" id="wl-select" class="form-input">
+          <option value="">— Aucune —</option>
+          {% for w in wordlists %}
+          <option value="{{ w.path }}">{{ w.name }} ({{ (w.size/1024/1024)|round(1) }} MB)</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div id="wl-upload-zone" class="hidden">
+        <label class="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-lg border-2 border-dashed p-6 transition-all"
+               style="border-color:#1a3a5c; background:#050b14;"
+               ondragover="event.preventDefault(); this.style.borderColor='#00b4d8'"
+               ondragleave="this.style.borderColor='#1a3a5c'"
+               ondrop="handleWlDrop(event)">
+          <svg class="w-8 h-8" fill="none" stroke="#5a8fa8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+          <span class="text-sm text-ink-muted" id="wl-file-label">Glisser une wordlist ou cliquer</span>
+          <span class="text-xs text-ink-muted">Sera sauvegardée pour les prochaines attaques</span>
+          <input type="file" name="wordlist_file_upload" accept=".txt,.lst,.dict" class="hidden"
+                 onchange="updateWlFileLabel(this)" />
+        </label>
+      </div>
+    </div>
+
+    <div id="opt-mask" class="flex flex-col gap-2 hidden">
+      <label class="form-label">Mask</label>
+      <input name="mask" id="mask-input" class="form-input font-mono" placeholder="?a?a?a?a?a?a?a?a" />
+      <p class="text-xs text-ink-muted">?l=lower ?u=upper ?d=digit ?s=symbol ?a=all</p>
+    </div>
+
+    <div id="opt-rules" class="flex flex-col gap-2">
+      <label class="form-label">Fichier de règles (optionnel)</label>
+      <input name="rules" class="form-input" placeholder="/usr/share/hashcat/rules/best64.rule" />
+    </div>
+  </div>
+
+  <!-- GPU manquants -->
+  {% if missing_devices %}
+  <div class="rounded-xl border px-4 py-3 flex items-start gap-3"
+       style="background:#3a2a00; border-color:#5c4000;">
+    <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="#fbbf24" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    </svg>
+    <div class="text-sm text-warn">
+      <span class="font-semibold">GPU non détecté(s) :</span>
+      device(s) #{{ missing_devices | join(', #') }} assigné(s) à votre compte mais introuvables.
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- GPU -->
+  {% if devices %}
+  <div class="rounded-xl border p-5 flex flex-col gap-3" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Devices GPU</label>
+    <div class="flex flex-col gap-2" id="devices-list">
+      {% for d in devices %}
+      {% set is_busy = d.id in busy_ids %}
+      <label class="flex items-center gap-3 px-3 py-2 rounded-lg border transition-all
+                    {% if is_busy %}gpu-busy{% else %}cursor-pointer{% endif %}"
+             style="border-color:{% if is_busy %}#2a1a0a{% else %}#1a3a5c{% endif %};
+                    background:{% if is_busy %}#12100e{% else %}#0d2240{% endif %};">
+        <input type="checkbox" name="devices" value="{{ d.id }}"
+               {% if not is_busy %}class="accent-accent"{% endif %}
+               {% if is_busy %}disabled aria-disabled="true"{% endif %} />
+        <div class="flex-1">
+          <div class="text-sm {% if is_busy %}text-ink-muted{% else %}text-ink{% endif %}">#{{ d.id }} — {{ d.name }}</div>
+          <div class="text-xs text-ink-muted">{{ d.type }}</div>
+        </div>
+        {% if is_busy %}
+        <span class="text-xs px-2 py-0.5 rounded font-medium"
+              style="background:#2a1000; color:#7c4a00; border:1px solid #3a1800;">OCCUPÉ</span>
+        {% else %}
+        <span class="text-xs px-2 py-0.5 rounded"
+              style="background:#0d3a1a; color:#34d399;">LIBRE</span>
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    {% if busy_ids %}
+    <p class="text-xs text-ink-muted">Les GPUs grisés sont occupés par un job en cours.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Workload (admin) -->
+  {% if current_user.role == 'admin' %}
+  <div class="rounded-xl border p-5 flex flex-col gap-3" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Workload profile (hashcat -w)</label>
+    <input type="hidden" name="workload_override" id="workload_override" value="2" />
+    <div class="flex flex-wrap gap-2" id="workload-chips">
+      {% for w, label in workload_labels.items() %}
+      <button type="button" class="workload-chip {% if w == 2 %}active{% endif %}"
+              data-w="{{ w }}" onclick="selectWorkload({{ w }})">
+        <span class="font-mono text-accent">-w{{ w }}</span>
+        <span class="ml-1 text-ink-muted">{{ label }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    <p class="text-xs text-ink-muted">High / Nightmare monopolise le GPU — interface peut freezer.</p>
+  </div>
+  {% endif %}
+
+  <!-- Args supplémentaires (admin) -->
+  {% if current_user.role == 'admin' %}
+  <div class="rounded-xl border p-5 flex flex-col gap-2" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Arguments supplémentaires (optionnel)</label>
+    <input name="extra_args" class="form-input font-mono"
+           placeholder="--increment --increment-min=4 ..." />
+  </div>
+  {% endif %}
+
+  <button type="submit" class="btn btn-primary w-full py-3 rounded-xl justify-center text-base">
+    Lancer l'attaque
+  </button>
+
+</form>
+
+<script>
+  var currentMode = 0;
+
+  function selectWorkload(w) {
+    document.getElementById('workload_override').value = w;
+    document.querySelectorAll('.workload-chip').forEach(function(c) {
+      c.classList.toggle('active', parseInt(c.dataset.w) === w);
+    });
+  }
+
+  function setMode(m) {
+    currentMode = m;
+    document.getElementById('attack_mode_hidden').value = m;
+    document.querySelectorAll('.mode-btn').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.mode) === m);
+    });
+    var wl = document.getElementById('opt-wordlist');
+    var mk = document.getElementById('opt-mask');
+    var ru = document.getElementById('opt-rules');
+    wl.classList.toggle('hidden', [3].includes(m));
+    mk.classList.toggle('hidden', [0, 1].includes(m));
+    ru.classList.toggle('hidden', m !== 0);
+  }
+
+  function setHashMode(mode) {
+    var isPaste = mode === 'paste';
+    document.getElementById('hash-paste-zone').classList.toggle('hidden', !isPaste);
+    document.getElementById('hash-file-zone').classList.toggle('hidden', isPaste);
+    var tabPaste = document.getElementById('hash-tab-paste');
+    var tabFile  = document.getElementById('hash-tab-file');
+    tabPaste.className = isPaste ? 'btn btn-primary btn-xs' : 'btn btn-secondary btn-xs';
+    tabFile.className  = isPaste ? 'btn btn-secondary btn-xs' : 'btn btn-primary btn-xs';
+  }
+
+  function updateHashFileLabel(input) {
+    var f = input.files[0];
+    document.getElementById('hash-file-label').textContent = f
+      ? f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)'
+      : 'Glisser un fichier .txt ou cliquer';
+  }
+
+  function handleHashDrop(e) {
+    e.preventDefault();
+    e.currentTarget.style.borderColor = '#1a3a5c';
+    var file = e.dataTransfer.files[0];
+    if (!file) return;
+    var input = e.currentTarget.querySelector('input[type=file]');
+    var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    updateHashFileLabel(input);
+  }
+
+  function setWlMode(mode) {
+    var isSelect = mode === 'select';
+    document.getElementById('wl-select-zone').classList.toggle('hidden', !isSelect);
+    document.getElementById('wl-upload-zone').classList.toggle('hidden', isSelect);
+    document.getElementById('wl-tab-select').className = isSelect ? 'btn btn-primary btn-xs' : 'btn btn-secondary btn-xs';
+    document.getElementById('wl-tab-upload').className = isSelect ? 'btn btn-secondary btn-xs' : 'btn btn-primary btn-xs';
+  }
+
+  function updateWlFileLabel(input) {
+    var f = input.files[0];
+    document.getElementById('wl-file-label').textContent = f
+      ? f.name + ' (' + (f.size/1024/1024).toFixed(1) + ' MB)'
+      : 'Glisser une wordlist ou cliquer';
+  }
+
+  function handleWlDrop(e) {
+    e.preventDefault();
+    e.currentTarget.style.borderColor = '#1a3a5c';
+    var file = e.dataTransfer.files[0];
+    if (!file) return;
+    var input = e.currentTarget.querySelector('input[type=file]');
+    var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    updateWlFileLabel(input);
+  }
+
+  function selectHashType(hashcat, name) {
+    document.getElementById('hash_type_hidden').value      = hashcat !== null ? hashcat : '';
+    document.getElementById('hash_type_name_hidden').value = name;
+    document.getElementById('hash_type_display').value     = hashcat !== null ? hashcat : '';
+    document.getElementById('hash_type_name_display').value = name;
+    var label = name + (hashcat !== null ? '  (-m ' + hashcat + ')' : '');
+    document.getElementById('selected-type-label').textContent = label;
+    document.getElementById('selected-type-banner').classList.remove('hidden');
+    document.getElementById('manual-type-input').classList.add('hidden');
+    document.getElementById('detect-results').classList.add('hidden');
+  }
+
+  function clearHashType() {
+    document.getElementById('hash_type_hidden').value       = '0';
+    document.getElementById('hash_type_name_hidden').value  = '';
+    document.getElementById('hash_type_display').value      = '';
+    document.getElementById('hash_type_name_display').value = '';
+    document.getElementById('selected-type-banner').classList.add('hidden');
+    document.getElementById('manual-type-input').classList.remove('hidden');
+    document.getElementById('detect-results').classList.add('hidden');
+  }
+
+  function onManualTypeInput(val) {
+    document.getElementById('hash_type_hidden').value = val;
+    if (val) {
+      document.getElementById('selected-type-label').textContent = '-m ' + val;
+      document.getElementById('selected-type-banner').classList.remove('hidden');
+    } else {
+      document.getElementById('selected-type-banner').classList.add('hidden');
+    }
+  }
+
+  async function detectHash() {
+    var isPasteMode = !document.getElementById('hash-paste-zone').classList.contains('hidden');
+    var h = '';
+    if (isPasteMode) {
+      h = document.getElementById('hash_content').value.trim().split('\n')[0].trim();
+      if (!h) return;
+    } else {
+      var fileInput = document.querySelector('input[name="hash_file_upload"]');
+      if (!fileInput || !fileInput.files[0]) return;
+      h = await new Promise((resolve) => {
+        var reader = new FileReader();
+        reader.onload = (e) => {
+          var first = e.target.result.split('\n').map(l => l.trim()).find(l => l.length > 0) || '';
+          resolve(first);
+        };
+        reader.readAsText(fileInput.files[0]);
+      });
+      if (!h) return;
+    }
+    var btn = document.getElementById('btn-detect');
+    btn.textContent = '...';
+    btn.disabled = true;
+    try {
+      var res  = await fetch('/api/detect', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({hash: h})
+      });
+      var data = await res.json();
+      var box = document.getElementById('detect-results');
+      box.innerHTML = '';
+      if (!data.length) {
+        box.innerHTML = '<div class="text-xs text-ink-muted">Aucune correspondance — entrez -m manuellement.</div>';
+        box.classList.remove('hidden');
+        return;
+      }
+      data.forEach((item, i) => {
+        var row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'detect-chip w-full text-left';
+        row.style.cssText = 'flex-direction:column; align-items:flex-start; padding:8px 12px; border-radius:8px; width:100%; gap:2px;';
+        row.style.borderLeft = item.extended ? '3px solid #f59e0b' : '3px solid #00b4d8';
+        if (item.extended) row.style.opacity = '0.7';
+        var topLine =
+          '<div style="display:flex; justify-content:space-between; width:100%; align-items:center;">' +
+            '<span class="font-medium">' + item.name +
+              (i === 0 ? ' <span style="font-size:10px; color:#22c55e; margin-left:6px;">★ suggestion</span>' : '') +
+              (item.extended ? ' <span style="font-size:10px; color:#f59e0b; margin-left:4px;">[étendu]</span>' : '') +
+            '</span>' +
+            (item.hashcat !== null
+              ? '<span style="color:#00b4d8; font-weight:700; font-family:monospace;">-m ' + item.hashcat + '</span>'
+              : '<span style="color:#5a8fa8; font-size:11px;">pas de mode hashcat</span>') +
+          '</div>';
+        var desc = item.description
+          ? '<div style="font-size:11px; color:#8ca0b3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">' + item.description + '</div>'
+          : '';
+        row.innerHTML = topLine + desc;
+        row.onclick = function() { selectHashType(item.hashcat, item.name); };
+        box.appendChild(row);
+        if (i === 0) row.click();
+      });
+      box.classList.remove('hidden');
+    } finally {
+      btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg> Détecter';
+      btn.disabled = false;
+    }
+  }
+
+  // ── Auto-détection au collé (debounce 500ms) ──────────────────────────────
+  var _detectTimer = null;
+  document.getElementById('hash_content').addEventListener('paste', function() {
+    clearTimeout(_detectTimer);
+    _detectTimer = setTimeout(function() {
+      var h = document.getElementById('hash_content').value.trim().split('\n')[0].trim();
+      if (h) detectHash();
+    }, 500);
+  });
+
+  // ── Pré-remplissage depuis un job existant ────────────────────────────────
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof window._PREFILL === 'undefined') return;
+    var p = window._PREFILL;
+    if (p.name) document.getElementById('job-name').value = p.name + ' (bis)';
+    setMode(p.attack_mode || 0);
+    if (p.hash_type !== null && p.hash_type !== undefined) {
+      document.getElementById('hash_type_hidden').value  = p.hash_type;
+      document.getElementById('hash_type_display').value = p.hash_type;
+      if (p.hash_type_name) {
+        selectHashType(p.hash_type, p.hash_type_name);
+      }
+    }
+    if (p.mask) {
+      var maskInput = document.getElementById('mask-input');
+      if (maskInput) maskInput.value = p.mask;
+    }
+    if (p.wordlist) {
+      var wlSel = document.getElementById('wl-select');
+      if (wlSel) {
+        for (var opt of wlSel.options) {
+          if (opt.value === p.wordlist) { opt.selected = true; break; }
+        }
+      }
+    }
+    if (p.workload) selectWorkload(p.workload);
+    if (p.devices) {
+      p.devices.split(',').forEach(function(did) {
+        var cb = document.querySelector('input[name="devices"][value="' + did.trim() + '"]');
+        if (cb && !cb.disabled) cb.checked = true;
+      });
+    }
+  });
+</script>
+{% endblock %}

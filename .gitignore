@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Données sensibles — ne jamais committer
+instance/config.json
+instance/samebreaker.db
+instance/jobs/
+instance/wordlists/
+
+# Fichiers de test locaux
+test_hashes.txt
+test_wordlist.txt
+
+# Logs
+*.log

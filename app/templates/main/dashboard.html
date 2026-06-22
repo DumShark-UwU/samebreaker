@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SameBreaker{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- Statut hashcat -->
+<div class="flex items-center gap-3 px-4 py-3 rounded-lg border text-sm"
+     style="background:#091828; border-color:#0d2240;">
+  <span class="w-2 h-2 rounded-full {% if hashcat_ok %}bg-ok pulse{% else %}bg-danger{% endif %}"></span>
+  {% if hashcat_ok %}
+    <span class="text-ok font-medium">hashcat {{ hashcat_version }}</span>
+    <span class="text-ink-muted">— opérationnel</span>
+  {% else %}
+    <span class="text-danger font-medium">hashcat introuvable</span>
+    <span class="text-ink-muted">— installez hashcat et assurez-vous qu'il est dans le PATH</span>
+  {% endif %}
+  <a href="{{ url_for('main.system') }}" class="ml-auto text-xs text-accent hover:underline">Détails système →</a>
+</div>
+
+<!-- Actions + filtres -->
+<div class="flex items-center gap-3 flex-wrap">
+  <div class="flex gap-1 flex-wrap" id="filter-btns">
+    <button onclick="filterJobs('all')"   class="btn btn-sm btn-primary"    id="f-all">Tous</button>
+    <button onclick="filterJobs('running')"   class="btn btn-sm btn-secondary" id="f-running">En cours</button>
+    <button onclick="filterJobs('completed')" class="btn btn-sm btn-secondary" id="f-completed">Terminés</button>
+    <button onclick="filterJobs('failed')"    class="btn btn-sm btn-secondary" id="f-failed">Échoués</button>
+    <button onclick="filterJobs('stopped')"   class="btn btn-sm btn-secondary" id="f-stopped">Stoppés</button>
+    <button onclick="filterJobs('pending')"   class="btn btn-sm btn-secondary" id="f-pending">En attente</button>
+  </div>
+  <a href="{{ url_for('main.new_attack') }}" class="btn btn-primary btn-sm ml-auto">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+    </svg>
+    Nouvelle attaque
+  </a>
+</div>
+
+<!-- Table jobs -->
+<div class="rounded-xl border overflow-hidden overflow-x-auto" style="border-color:#0d2240;">
+  <table class="w-full text-sm min-w-[600px]">
+    <thead style="background:#0d2240;">
+      <tr class="text-left text-ink-muted text-xs uppercase tracking-wider">
+        <th class="px-4 py-3">#</th>
+        <th class="px-4 py-3">Nom</th>
+        <th class="px-4 py-3">Type de hash</th>
+        <th class="px-4 py-3">Mode</th>
+        <th class="px-4 py-3">Statut</th>
+        <th class="px-4 py-3">Créé</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody id="jobs-tbody">
+      {% for job in jobs %}
+      <tr class="border-t hover:bg-card/30 transition-colors job-row"
+          data-status="{{ job.status }}"
+          style="border-color:#0d2240;">
+        <td class="px-4 py-3 text-ink-muted">{{ job.id }}</td>
+        <td class="px-4 py-3 font-medium text-ink">{{ job.name }}</td>
+        <td class="px-4 py-3 text-ink-muted text-xs">
+          {% if job.hash_type_name %}{{ job.hash_type_name }}{% endif %}
+          <span class="text-accent/60">(-m {{ job.hash_type }})</span>
+        </td>
+        <td class="px-4 py-3 text-ink-muted text-xs">
+          {% if job.attack_mode == 0 %}Dict
+          {% elif job.attack_mode == 1 %}Combinator
+          {% elif job.attack_mode == 3 %}Mask
+          {% elif job.attack_mode == 6 %}Hybrid W+M
+          {% elif job.attack_mode == 7 %}Hybrid M+W
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
+        </td>
+        <td class="px-4 py-3 text-ink-muted text-xs">{{ job.created_at[:16] }}</td>
+        <td class="px-4 py-3">
+          <a href="{{ url_for('main.job_detail', job_id=job.id) }}"
+             class="btn btn-secondary btn-xs">Voir →</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr id="empty-row">
+        <td colspan="7" class="px-4 py-10 text-center text-ink-muted text-sm">
+          Aucun job.
+          <a href="{{ url_for('main.new_attack') }}" class="text-accent hover:underline">Lancer une attaque →</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  var _activeFilter = 'all';
+
+  function filterJobs(status) {
+    _activeFilter = status;
+    // Mettre à jour les boutons
+    ['all','running','completed','failed','stopped','pending'].forEach(function(s) {
+      var btn = document.getElementById('f-' + s);
+      if (!btn) return;
+      if (s === status) {
+        btn.className = 'btn btn-sm btn-primary';
+      } else {
+        btn.className = 'btn btn-sm btn-secondary';
+      }
+    });
+    // Filtrer les lignes
+    var rows = document.querySelectorAll('.job-row');
+    var visible = 0;
+    rows.forEach(function(row) {
+      var show = status === 'all' || row.dataset.status === status;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    // Gérer la ligne "vide"
+    var emptyRow = document.getElementById('empty-row');
+    if (emptyRow) emptyRow.style.display = rows.length === 0 ? '' : 'none';
+    if (rows.length > 0 && visible === 0) {
+      // Aucune ligne pour ce filtre
+      if (!document.getElementById('no-filter-row')) {
+        var tr = document.createElement('tr');
+        tr.id = 'no-filter-row';
+        tr.innerHTML = '<td colspan="7" class="px-4 py-8 text-center text-ink-muted text-sm">Aucun job avec ce statut.</td>';
+        document.getElementById('jobs-tbody').appendChild(tr);
+      }
+      document.getElementById('no-filter-row').style.display = '';
+    } else {
+      var nfr = document.getElementById('no-filter-row');
+      if (nfr) nfr.style.display = 'none';
+    }
+  }
+</script>
+
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Mon profil — SameBreaker{% endblock %}
+{% block page_title %}Mon profil{% endblock %}
+
+{% block head %}
+<style>
+  .form-label { display:block; font-size:12px; color:#5a8fa8; margin-bottom:4px;
+                text-transform:uppercase; letter-spacing:.05em; }
+  .form-input { width:100%; padding:9px 12px; border-radius:8px; background:#0d2240;
+                border:1px solid #1a3a5c; color:#cce8f4; font-size:13px; outline:none; transition:.2s; }
+  .form-input:focus { border-color:#00b4d8; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-6 w-full">
+
+  <!-- Infos compte -->
+  <div class="rounded-xl border p-5 flex flex-col gap-3" style="background:#091828; border-color:#0d2240;">
+    <div class="text-xs text-ink-muted uppercase tracking-wider mb-1">Informations du compte</div>
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-ink-muted">Nom d'utilisateur</span>
+      <span class="font-medium text-ink">{{ current_user.username }}</span>
+    </div>
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-ink-muted">Rôle</span>
+      <span class="px-2 py-0.5 rounded text-xs font-semibold
+        {% if current_user.role == 'admin' %}text-accent{% else %}text-ok{% endif %}"
+        style="background:#0d2240; border:1px solid currentColor;">
+        {{ current_user.role }}
+      </span>
+    </div>
+    {% if current_user.role == 'user' %}
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-ink-muted">GPU assignés</span>
+      <span class="text-sm text-ink font-mono">
+        {% if current_user.allowed_devices %}
+          {{ current_user.allowed_devices }}
+        {% else %}
+          <span class="text-ink-muted">aucun</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="flex items-center justify-between">
+      <span class="text-sm text-ink-muted">Workload profile</span>
+      <span class="text-sm font-mono text-accent">-w {{ current_user.workload_profile }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Changer le mot de passe -->
+  <form method="POST" class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <div class="text-xs text-ink-muted uppercase tracking-wider mb-1">Changer le mot de passe</div>
+
+    <div>
+      <label class="form-label">Mot de passe actuel</label>
+      <input name="current_password" type="password" class="form-input" required
+             autocomplete="current-password" placeholder="••••••••" />
+    </div>
+    <div>
+      <label class="form-label">Nouveau mot de passe</label>
+      <input name="new_password" type="password" class="form-input" required
+             autocomplete="new-password" placeholder="••••••••" minlength="8" />
+    </div>
+    <div>
+      <label class="form-label">Confirmer le nouveau mot de passe</label>
+      <input name="confirm_password" type="password" class="form-input" required
+             autocomplete="new-password" placeholder="••••••••" minlength="8" />
+    </div>
+
+    <button type="submit"
+            class="w-full py-3 rounded-xl font-bold text-sm transition-all mt-1"
+            style="background:#00b4d8; color:#050b14;">
+      Mettre à jour le mot de passe
+    </button>
+  </form>
+
+</div>
+{% endblock %}

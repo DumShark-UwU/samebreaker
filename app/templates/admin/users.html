@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Utilisateurs — SameBreaker{% endblock %}
+{% block page_title %}Gestion des utilisateurs{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between">
+  <p class="text-sm text-ink-muted">{{ users | length }} utilisateur(s) enregistré(s)</p>
+  <a href="{{ url_for('admin.new_user') }}" class="btn btn-primary btn-sm">
+    + Nouvel utilisateur
+  </a>
+</div>
+
+<div class="rounded-xl border overflow-hidden overflow-x-auto" style="border-color:#0d2240;">
+  <table class="w-full text-sm min-w-[640px]">
+    <thead style="background:#0d2240;">
+      <tr class="text-left text-ink-muted text-xs uppercase tracking-wider">
+        <th class="px-4 py-3">#</th>
+        <th class="px-4 py-3">Username</th>
+        <th class="px-4 py-3">Rôle</th>
+        <th class="px-4 py-3">2FA</th>
+        <th class="px-4 py-3">GPU assignés</th>
+        <th class="px-4 py-3">Workload</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr class="border-t transition-colors hover:bg-card/30" style="border-color:#0d2240;">
+        <td class="px-4 py-3 text-ink-muted">{{ u.id }}</td>
+        <td class="px-4 py-3 font-medium text-ink">
+          {{ u.username }}
+          {% if u.id == current_user.id %}
+            <span class="ml-1 text-xs text-accent">(vous)</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          {% if u.role == 'admin' %}
+            <span class="badge" style="background:#7c3aed; color:#fff;">admin</span>
+          {% else %}
+            <span class="badge" style="background:#0d2240; color:#5a8fa8; border:1px solid #1a3a5c;">user</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          {% if require_2fa %}
+            {% if u.totp_secret %}
+              <span class="text-xs px-2 py-0.5 rounded font-mono"
+                    style="background:#0d3a1a; color:#34d399; border:1px solid #1a5c30;">
+                ✓ actif
+              </span>
+            {% else %}
+              <span class="text-xs px-2 py-0.5 rounded font-mono"
+                    style="background:#3a1a00; color:#fbbf24; border:1px solid #5c3000;">
+                en attente
+              </span>
+            {% endif %}
+          {% else %}
+            <span class="text-xs" style="color:#5a8fa8;">désactivé</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          {% if u.role == 'admin' %}
+            <span class="text-xs text-ink-muted">Tous</span>
+          {% elif u.allowed_devices %}
+            <div class="flex flex-wrap gap-1">
+              {% for dev_id in u.allowed_devices.split(',') %}
+                {% set did = dev_id.strip() | int %}
+                {% if did in detected %}
+                  <span class="px-2 py-0.5 rounded text-xs font-mono"
+                        style="background:#0d3a1a; color:#34d399; border:1px solid #1a5c30;">
+                    #{{ did }} {{ detected[did].name[:15] }}
+                  </span>
+                {% else %}
+                  <span class="px-2 py-0.5 rounded text-xs font-mono"
+                        style="background:#3a1a00; color:#fbbf24; border:1px solid #5c3000;"
+                        title="Device non détecté">
+                    #{{ did }} ?
+                  </span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <span class="text-xs text-danger">Aucun GPU assigné</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-xs text-ink-muted">
+          -w {{ u.workload_profile }} — {{ workload_labels.get(u.workload_profile, '?') }}
+        </td>
+        <td class="px-4 py-3">
+          <div class="flex gap-2 justify-end flex-wrap">
+            <a href="{{ url_for('admin.edit_user', user_id=u.id) }}" class="btn btn-secondary btn-xs">
+              Modifier
+            </a>
+            {% if require_2fa and u.totp_secret %}
+            <form method="POST" action="{{ url_for('admin.reset_user_2fa', user_id=u.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <button type="submit" class="btn btn-warn btn-xs"
+                      onclick="return confirm('Réinitialiser le 2FA de {{ u.username }} ?')">
+                Reset 2FA
+              </button>
+            </form>
+            {% endif %}
+            {% if u.id != current_user.id %}
+            <form method="POST" action="{{ url_for('admin.delete_user', user_id=u.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <button type="submit" class="btn btn-danger btn-xs"
+                      onclick="return confirm('Supprimer {{ u.username }} ?')">
+                Supprimer
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

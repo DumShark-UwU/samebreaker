@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Job #{{ job.id }} — SameBreaker{% endblock %}
+{% block page_title %}Job #{{ job.id }} — {{ job.name }}{% endblock %}
+
+{% block head %}
+<style>
+  #log-output { font-family:monospace; font-size:12px; line-height:1.6;
+                white-space:pre-wrap; word-break:break-all;
+                background:#020608; border:1px solid #0d2240;
+                border-radius:10px; padding:16px; min-height:200px;
+                max-height:480px; overflow-y:auto; color:#7ec8e3; }
+  .info-row { display:flex; gap:8px; align-items:baseline; padding:6px 0;
+              border-bottom:1px solid #0d2240; font-size:13px; }
+  .info-label { color:#5a8fa8; min-width:130px; font-size:11px; text-transform:uppercase; }
+  .info-value { color:#cce8f4; }
+  #confirm-stop { display:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-5">
+
+  <!-- Header : statut + actions -->
+  <div class="flex items-center gap-3 flex-wrap">
+    <span class="badge badge-{{ job.status }} text-sm px-3 py-1">{{ job.status }}</span>
+
+    {% if job.status == 'running' %}
+    <!-- Bouton stop avec confirmation inline -->
+    <div class="flex items-center gap-2">
+      <button onclick="showConfirmStop()" class="btn btn-danger btn-sm" id="btn-stop-init">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        Arrêter
+      </button>
+      <div id="confirm-stop" class="flex items-center gap-2">
+        <span class="text-xs text-warn">Confirmer ?</span>
+        <form method="POST" action="{{ url_for('main.stop_attack', job_id=job.id) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <button type="submit" class="btn btn-danger btn-xs">Oui, arrêter</button>
+        </form>
+        <button onclick="hideConfirmStop()" class="btn btn-secondary btn-xs">Annuler</button>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if job.status in ('stopped', 'failed') and can_resume %}
+    <form method="POST" action="{{ url_for('main.resume_attack', job_id=job.id) }}" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <button type="submit" class="btn btn-warn btn-sm">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        Reprendre
+      </button>
+    </form>
+    {% endif %}
+
+    <!-- Relancer avec les mêmes paramètres -->
+    <a href="{{ url_for('main.new_attack', from_job=job.id) }}" class="btn btn-secondary btn-sm">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      Relancer
+    </a>
+
+    <a href="{{ url_for('main.index') }}" class="btn btn-secondary btn-sm ml-auto">← Dashboard</a>
+  </div>
+
+  <!-- Infos job -->
+  <div class="rounded-xl border p-5" style="background:#091828; border-color:#0d2240;">
+    <div class="info-row"><span class="info-label">Hash type</span>
+      <span class="info-value">{{ job.hash_type_name or '—' }} <span class="text-accent">(-m {{ job.hash_type }})</span></span></div>
+    <div class="info-row"><span class="info-label">Mode attaque</span>
+      <span class="info-value">{{ attack_modes.get(job.attack_mode, job.attack_mode) }}</span></div>
+    {% if job.wordlist %}
+    <div class="info-row"><span class="info-label">Wordlist</span>
+      <span class="info-value font-mono text-xs">{{ job.wordlist }}</span></div>
+    {% endif %}
+    {% if job.mask %}
+    <div class="info-row"><span class="info-label">Mask</span>
+      <span class="info-value font-mono">{{ job.mask }}</span></div>
+    {% endif %}
+    {% if job.devices %}
+    <div class="info-row"><span class="info-label">Devices</span>
+      <span class="info-value">{{ job.devices }}</span></div>
+    {% endif %}
+    <div class="info-row"><span class="info-label">Créé le</span>
+      <span class="info-value">{{ job.created_at }}</span></div>
+    {% if job.started_at %}
+    <div class="info-row"><span class="info-label">Démarré</span>
+      <span class="info-value">{{ job.started_at }}</span></div>
+    {% endif %}
+    {% if job.finished_at %}
+    <div class="info-row" style="border:none"><span class="info-label">Terminé</span>
+      <span class="info-value">{{ job.finished_at }}</span></div>
+    {% endif %}
+  </div>
+
+  <!-- Résultats -->
+  <div id="results-box" class="{% if not results %}hidden{% endif %} rounded-xl border p-5 flex flex-col gap-3"
+       style="background:#091828; border-color:{{ '#34d399' if job.status not in ('running','pending') else '#f97316' }};">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wider" id="results-title"
+            style="color:{{ '#34d399' if job.status not in ('running','pending') else '#f97316' }}">
+          Résultats crackés
+        </h2>
+        {% if job.status in ('running', 'pending') %}
+        <span class="flex items-center gap-1 text-xs" style="color:#f97316;">
+          <span class="w-2 h-2 rounded-full pulse" style="background:#f97316; display:inline-block;"></span>
+          en cours
+        </span>
+        {% endif %}
+      </div>
+      <a href="{{ url_for('main.download_results', job_id=job.id) }}" class="btn btn-success btn-xs">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Télécharger
+      </a>
+    </div>
+    <div id="results-list" class="flex flex-col gap-1">
+      {% for line in results %}
+      <div class="font-mono text-xs px-3 py-2 rounded result-line"
+           style="background:#0d2240; color:#34d399;">{{ line }}</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Log live -->
+  <div class="flex flex-col gap-2">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Sortie hashcat</h2>
+      {% if job.status == 'running' %}
+      <span class="flex items-center gap-1 text-xs text-accent">
+        <span class="w-2 h-2 rounded-full bg-accent pulse"></span> Live
+      </span>
+      {% endif %}
+    </div>
+    <div id="log-output">Chargement…</div>
+  </div>
+
+</div>
+
+<script>
+  function showConfirmStop() {
+    document.getElementById('btn-stop-init').style.display = 'none';
+    document.getElementById('confirm-stop').style.display  = 'flex';
+  }
+  function hideConfirmStop() {
+    document.getElementById('btn-stop-init').style.display = '';
+    document.getElementById('confirm-stop').style.display  = 'none';
+  }
+
+  var logEl  = document.getElementById('log-output');
+  var isLive = {{ 'true' if job.status in ('running', 'pending') else 'false' }};
+  logEl.textContent = '';
+
+  function appendLine(raw) {
+    var line = document.createElement('div');
+    if (raw.includes('Speed') || raw.includes('H/s'))         line.style.color = '#00b4d8';
+    else if (raw.includes('Recovered') || raw.includes(':'))  line.style.color = '#34d399';
+    else if (raw.includes('ERROR') || raw.includes('ERREUR')) line.style.color = '#e05252';
+    else if (raw.includes('Warn') || raw.includes('NOTE'))    line.style.color = '#fbbf24';
+    line.textContent = raw;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  var es = new EventSource('/api/jobs/{{ job.id }}/stream');
+  es.onmessage = function(e) {
+    if (e.data === '[DONE]') {
+      es.close();
+      if (isLive) setTimeout(() => location.reload(), 1500);
+      return;
+    }
+    appendLine(e.data);
+  };
+  es.onerror = function() { es.close(); };
+
+  {% if job.status in ('running', 'pending') %}
+  var knownResults = new Set({{ results | map(attribute='__str__') | list | tojson if results else '[]' }});
+  var resultsBox   = document.getElementById('results-box');
+  var resultsList  = document.getElementById('results-list');
+  var resultsTitle = document.getElementById('results-title');
+
+  function pollResults() {
+    fetch('/api/jobs/{{ job.id }}/results')
+      .then(r => r.json())
+      .then(d => {
+        var fresh = d.results.filter(r => !knownResults.has(r));
+        fresh.forEach(r => {
+          knownResults.add(r);
+          var line = document.createElement('div');
+          line.className = 'font-mono text-xs px-3 py-2 rounded result-line';
+          line.style.background = '#0d2240';
+          line.style.color = '#f97316';
+          line.textContent = r;
+          resultsList.appendChild(line);
+        });
+        if (d.results.length > 0) resultsBox.classList.remove('hidden');
+        if (d.status === 'completed') {
+          document.querySelectorAll('.result-line').forEach(el => { el.style.color = '#34d399'; });
+          resultsTitle.style.color = '#34d399';
+          clearInterval(_pollInterval);
+        }
+      }).catch(() => {});
+  }
+  var _pollInterval = setInterval(pollResults, 3000);
+  pollResults();
+  {% endif %}
+</script>
+{% endblock %}

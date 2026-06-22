@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SameBreaker — Configuration 2FA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+          integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSl6o+WRHxIZtEoQ09GmFYkqmcvS6Kuvp+Q=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <style>
+    body { background:#050b14; color:#cce8f4; font-family:system-ui,sans-serif; }
+    .field { width:100%; padding:10px 14px; border-radius:8px; background:#0d2240;
+             border:1px solid #1a3a5c; color:#cce8f4; font-size:14px; outline:none; transition:.2s;
+             letter-spacing:.2em; text-align:center; }
+    .field:focus { border-color:#00b4d8; box-shadow:0 0 0 2px rgba(0,180,216,.15); }
+    .field::placeholder { color:#5a8fa8; letter-spacing:normal; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm flex flex-col gap-5">
+
+    <div class="text-center">
+      <img src="/static/assets/logo.png" alt="SameBreaker" class="w-24 mx-auto mb-3" />
+      <h1 class="text-lg font-bold" style="color:#00b4d8;">Configuration 2FA</h1>
+      <p class="text-xs mt-1" style="color:#5a8fa8;">
+        Scannez ce QR code avec votre application TOTP, puis entrez le code généré.
+      </p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+      <div class="text-sm px-4 py-3 rounded-lg
+        {% if cat == 'error' %}bg-red-900/40 text-red-400 border border-red-800
+        {% else %}bg-green-900/40 text-green-400 border border-green-800{% endif %}">
+        {{ msg }}
+      </div>
+      {% endfor %}
+    {% endwith %}
+
+    <!-- QR Code + clé manuelle -->
+    <div class="rounded-xl border p-5 flex flex-col items-center gap-4"
+         style="background:#091828; border-color:#0d2240;">
+      <div id="qrcode" class="rounded-lg" style="padding:12px; background:#fff;"></div>
+      <div class="w-full flex flex-col gap-1">
+        <label class="text-xs uppercase tracking-wider" style="color:#5a8fa8;">
+          Clé manuelle (si QR non lisible)
+        </label>
+        <div class="font-mono text-xs px-3 py-2 rounded-lg text-center break-all select-all"
+             style="background:#0d2240; border:1px solid #1a3a5c; color:#00b4d8; letter-spacing:.12em;">
+          {{ secret | upper }}
+        </div>
+      </div>
+      <p class="text-xs text-center" style="color:#5a8fa8;">
+        Compatible : <strong class="text-ink">Google Authenticator</strong>,
+        <strong class="text-ink">Authy</strong>, <strong class="text-ink">Bitwarden</strong>,
+        FreeOTP, etc.
+      </p>
+    </div>
+
+    <!-- Formulaire de vérification -->
+    <form method="POST" class="flex flex-col gap-4 p-6 rounded-xl border"
+          style="background:#091828; border-color:#0d2240;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="flex flex-col gap-1">
+        <label class="text-xs uppercase tracking-wider" style="color:#5a8fa8;">
+          Code de vérification
+        </label>
+        <input name="code" class="field" required autofocus
+               inputmode="numeric" pattern="\d{6}" maxlength="6"
+               placeholder="123456" autocomplete="one-time-code" />
+      </div>
+      <button type="submit"
+              class="w-full py-2.5 rounded-lg font-bold text-sm transition-all"
+              style="background:#00b4d8; color:#050b14;">
+        Vérifier et activer
+      </button>
+    </form>
+
+    <div class="text-center">
+      <a href="{{ url_for('auth.login') }}" class="text-xs" style="color:#5a8fa8;">
+        ← Retour connexion
+      </a>
+    </div>
+  </div>
+
+<script>
+  new QRCode(document.getElementById('qrcode'), {
+    text: {{ totp_uri | tojson }},
+    width: 180,
+    height: 180,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}SameBreaker{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: {
+        bg:      "#050b14",
+        surface: "#091828",
+        card:    "#0d2240",
+        accent:  { DEFAULT:"#00b4d8", light:"#48cae4", dark:"#0096b7" },
+        ink:     { DEFAULT:"#cce8f4", muted:"#5a8fa8" },
+        danger:  { DEFAULT:"#e05252", light:"#ff7070" },
+        ok:      { DEFAULT:"#34d399", light:"#6ee7b7" },
+        warn:    { DEFAULT:"#fbbf24" },
+      }}},
+    };
+  </script>
+  <style>
+    body { background:#050b14; color:#cce8f4; font-family: 'Inter', system-ui, sans-serif; }
+    ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:#050b14; }
+    ::-webkit-scrollbar-thumb { background:#0d2240; border-radius:3px; }
+    .sidebar-link { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:8px;
+                    color:#5a8fa8; font-size:14px; transition:all .15s; text-decoration:none; }
+    .sidebar-link:hover { background:#0d2240; color:#cce8f4; }
+    .sidebar-link.active { background:#0d2240; color:#00b4d8; }
+    .badge-running  { background:#00b4d8; color:#050b14; }
+    .badge-completed{ background:#34d399; color:#050b14; }
+    .badge-failed   { background:#e05252; color:#fff; }
+    .badge-stopped  { background:#5a8fa8; color:#050b14; }
+    .badge-pending  { background:#fbbf24; color:#050b14; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+    /* ── Boutons unifiés ──────────────────────────────────────────── */
+    .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px;
+           font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; text-decoration:none;
+           border:none; white-space:nowrap; }
+    .btn-sm  { padding:5px 12px !important; font-size:12px !important; border-radius:6px !important; }
+    .btn-xs  { padding:3px 10px !important; font-size:11px !important; border-radius:6px !important; }
+    .btn-primary  { background:#00b4d8; color:#050b14; }
+    .btn-primary:hover  { background:#0096b7; color:#050b14; }
+    .btn-secondary { background:#0d2240; color:#5a8fa8; border:1px solid #1a3a5c; }
+    .btn-secondary:hover { border-color:#00b4d8; color:#cce8f4; }
+    .btn-danger   { background:#1a0808; color:#e05252; border:1px solid #3a1010; }
+    .btn-danger:hover  { background:#2a1010; border-color:#e05252; }
+    .btn-success  { background:#0d3a1a; color:#34d399; border:1px solid #1a5c30; }
+    .btn-success:hover  { background:#0f4a20; }
+    .btn-warn     { background:#3a2a00; color:#fbbf24; border:1px solid #5c4000; }
+    .btn-warn:hover { background:#4a3800; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .pulse { animation: pulse-dot 1.5s infinite; }
+
+    /* Sidebar responsive */
+    #sidebar {
+      transition: transform .2s ease;
+    }
+    @media (max-width: 1023px) {
+      #sidebar {
+        position: fixed; top:0; left:0; bottom:0; z-index:50;
+        transform: translateX(-100%);
+      }
+      #sidebar.sidebar-open {
+        transform: translateX(0);
+        box-shadow: 4px 0 24px rgba(0,0,0,.7);
+      }
+    }
+    #sidebar-overlay {
+      display:none; position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.6);
+    }
+    #sidebar-overlay.sidebar-open { display:block; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="w-56 flex-shrink-0 flex flex-col border-r border-card py-6 px-3 gap-1"
+         style="background:#07111f; border-color:#0d2240;">
+    <div class="flex flex-col items-center px-3 mb-4 gap-2">
+      <img src="{{ url_for('static', filename='assets/logo.png') }}" alt="SameBreaker" class="w-50 h-50 object-contain" />
+      <div id="shark-text"
+           style="font-size:11px; color:#00b4d8; font-family:monospace; text-align:center;
+                  min-height:2.6em; line-height:1.4; letter-spacing:.03em;"></div>
+      <div style="font-size:12px; color:#5a8fa8; letter-spacing:.1em; font-family:monospace;">Ver 1.0.0</div>
+    </div>
+
+    <a href="{{ url_for('main.index') }}"
+       class="sidebar-link {% if request.endpoint == 'main.index' %}active{% endif %}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+      </svg>
+      Dashboard
+      {% if running_jobs_count %}
+      <span class="ml-auto text-xs font-bold px-1.5 py-0.5 rounded-full pulse"
+            style="background:#00b4d8; color:#050b14; min-width:18px; text-align:center;">
+        {{ running_jobs_count }}
+      </span>
+      {% endif %}
+    </a>
+
+    <a href="{{ url_for('main.new_attack') }}"
+       class="sidebar-link {% if request.endpoint == 'main.new_attack' %}active{% endif %}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      Nouvelle attaque
+    </a>
+
+    <a href="{{ url_for('main.system') }}"
+       class="sidebar-link {% if request.endpoint == 'main.system' %}active{% endif %}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+      </svg>
+      Système
+    </a>
+
+    <a href="{{ url_for('main.benchmark') }}"
+       class="sidebar-link {% if request.endpoint == 'main.benchmark' %}active{% endif %}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      Benchmark
+    </a>
+
+    {% if current_user.is_authenticated and current_user.role == 'admin' %}
+    <a href="{{ url_for('admin.users') }}"
+       class="sidebar-link {% if request.endpoint == 'admin.users' or request.endpoint in ('admin.new_user','admin.edit_user','admin.delete_user') %}active{% endif %}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+      </svg>
+      Utilisateurs
+    </a>
+    <a href="{{ url_for('admin.audit_jobs') }}"
+       class="sidebar-link {% if request.endpoint == 'admin.audit_jobs' %}active{% endif %}">
+      <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      Audit jobs
+    </a>
+    {% endif %}
+
+    <div class="mt-auto pt-4 border-t border-card">
+      <a href="{{ url_for('main.profile') }}"
+         class="sidebar-link {% if request.endpoint == 'main.profile' %}active{% endif %}">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+        <span class="truncate">{{ current_user.username }}
+          <span class="text-accent text-xs">({{ current_user.role }})</span>
+        </span>
+      </a>
+      <form method="POST" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button class="sidebar-link w-full text-left" style="color:#e05252;">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+          Déconnexion
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <!-- Overlay mobile -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- Main -->
+  <main class="flex-1 flex flex-col min-h-screen overflow-x-hidden min-w-0">
+  {% if current_user.is_authenticated and current_user.must_change_password %}
+  <div style="background:#7c2d12; border-bottom:1px solid #b45309;"
+       class="flex items-center gap-3 px-4 lg:px-6 py-3">
+    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="#fbbf24" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    </svg>
+    <span style="color:#fde68a; font-size:13px; font-weight:500;">
+      Vous utilisez le compte par défaut <strong>admin / admin</strong> — veuillez
+      <a href="{{ url_for('main.profile') }}"
+         style="color:#fbbf24; text-decoration:underline; font-weight:700;">changer votre mot de passe</a>
+      dès maintenant.
+    </span>
+  </div>
+  {% endif %}
+    <!-- Topbar -->
+    <header class="flex items-center gap-3 px-4 lg:px-6 py-4 border-b border-card flex-wrap"
+            style="background:#07111f;">
+      <!-- Hamburger (mobile only) -->
+      <button class="lg:hidden flex-shrink-0 p-1.5 rounded-lg transition-all"
+              style="color:#5a8fa8; border:1px solid #0d2240;"
+              onclick="toggleSidebar()" aria-label="Menu">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <h1 class="text-base lg:text-lg font-semibold text-ink flex-1 truncate">{% block page_title %}{% endblock %}</h1>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+          <div class="text-xs lg:text-sm px-3 py-1.5 rounded-lg flex-shrink-0
+            {% if cat == 'error' %}bg-danger/20 text-danger{% else %}bg-ok/20 text-ok{% endif %}">
+            {{ msg }}
+          </div>
+        {% endfor %}
+      {% endwith %}
+    </header>
+
+    <div class="flex-1 p-4 lg:p-6 flex flex-col gap-4 lg:gap-6">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('sidebar-open');
+      document.getElementById('sidebar-overlay').classList.toggle('sidebar-open');
+    }
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.remove('sidebar-open');
+      document.getElementById('sidebar-overlay').classList.remove('sidebar-open');
+    }
+    window.addEventListener('resize', function() {
+      if (window.innerWidth >= 1024) closeSidebar();
+    });
+
+    // ── Animation サメ ──────────────────────────────────────────────────────
+    (function() {
+      var el = document.getElementById('shark-text');
+      if (!el) return;
+      var lines = ['サメ！サメ！サメ、サメ！', 'サメに気をつけろ！'];
+      var lineIdx = 0, charIdx = 0, deleting = false;
+      var DELAY_TYPE = 90, DELAY_PAUSE = 1800, DELAY_DELETE = 40, DELAY_NEXT = 400;
+
+      function tick() {
+        var line = lines[lineIdx];
+        if (!deleting) {
+          charIdx++;
+          el.textContent = line.slice(0, charIdx);
+          if (charIdx === line.length) {
+            // Ligne complète → si dernière ligne, pause puis efface tout
+            if (lineIdx === lines.length - 1) {
+              setTimeout(function() { deleting = true; tick(); }, DELAY_PAUSE);
+            } else {
+              // Passe à la ligne suivante
+              setTimeout(function() {
+                lineIdx++;
+                charIdx = 0;
+                el.textContent = lines.slice(0, lineIdx).join('\n');
+                tick();
+              }, DELAY_NEXT);
+            }
+            return;
+          }
+        } else {
+          // Efface ligne par ligne depuis la fin
+          if (lineIdx > 0) {
+            lineIdx--;
+            el.textContent = lines.slice(0, lineIdx + 1).join('\n');
+            setTimeout(tick, DELAY_DELETE * 8);
+            return;
+          } else {
+            charIdx--;
+            el.textContent = line.slice(0, charIdx);
+            if (charIdx === 0) {
+              deleting = false;
+              lineIdx = 0;
+              setTimeout(tick, DELAY_NEXT);
+              return;
+            }
+          }
+        }
+        setTimeout(tick, deleting ? DELAY_DELETE : DELAY_TYPE);
+      }
+      setTimeout(tick, 600);
+    })();
+  </script>
+
+</body>
+</html>

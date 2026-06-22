@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Benchmark — SameBreaker{% endblock %}
+{% block page_title %}Benchmark hashcat{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center gap-3 px-4 py-3 rounded-lg border text-sm"
+     style="background:#091828; border-color:#0d2240;">
+  <span class="w-2 h-2 rounded-full {% if hashcat_ok %}bg-ok pulse{% else %}bg-danger{% endif %}"></span>
+  {% if hashcat_ok %}
+    <span class="text-ok font-medium">hashcat {{ hashcat_version }}</span>
+    <span class="text-ink-muted">— opérationnel</span>
+  {% else %}
+    <span class="text-danger font-medium">hashcat introuvable</span>
+  {% endif %}
+</div>
+
+<div class="flex items-center justify-between">
+  <p class="text-sm text-ink-muted">
+    Teste les performances de tes devices sur tous les algorithmes
+    (<code class="text-accent bg-card px-1 rounded">hashcat -b</code>).
+  </p>
+  <div class="flex gap-2">
+    <button id="btn-start"
+            onclick="startBenchmark()"
+            {% if not hashcat_ok %}disabled{% endif %}
+            class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            style="background:#00b4d8; color:#050b14;">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      Lancer
+    </button>
+    <button id="btn-stop"
+            onclick="stopBenchmark()"
+            class="hidden flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+            style="background:#e05252; color:#fff;">
+      Stop
+    </button>
+  </div>
+</div>
+
+<div class="rounded-xl border overflow-hidden" style="border-color:#0d2240;">
+  <div class="flex items-center justify-between px-4 py-2 border-b text-xs text-ink-muted"
+       style="background:#0d2240; border-color:#0d2240;">
+    <span>Sortie hashcat</span>
+    <span id="bm-status">—</span>
+  </div>
+  <div id="bm-output"
+       style="background:#030a12; font-family:monospace; font-size:12px; line-height:1.6;
+              height:480px; overflow-y:auto; padding:16px; color:#5a8fa8; white-space:pre-wrap;">
+    <span id="bm-placeholder" style="color:#1a3a50;">// En attente du lancement...</span>
+  </div>
+</div>
+
+<script>
+  const out     = document.getElementById('bm-output');
+  const status  = document.getElementById('bm-status');
+  const btnStart = document.getElementById('btn-start');
+  const btnStop  = document.getElementById('btn-stop');
+  let _src = null;
+
+  function appendLine(raw) {
+    const placeholder = document.getElementById('bm-placeholder');
+    if (placeholder) placeholder.remove();
+    const line = document.createElement('div');
+    if (raw.includes('Speed') || raw.includes('H/s')) line.style.color = '#00b4d8';
+    else if (raw.includes('ERROR') || raw.includes('ERREUR')) line.style.color = '#e05252';
+    else if (raw.match(/#\d+/) || raw.includes('Device')) line.style.color = '#cce8f4';
+    else if (raw.includes('Initializ') || raw.includes('Starting')) line.style.color = '#fbbf24';
+    line.textContent = raw;
+    out.appendChild(line);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  function setRunning() {
+    status.textContent = 'EN COURS...';
+    status.style.color = '#fbbf24';
+    btnStart.classList.add('hidden');
+    btnStop.classList.remove('hidden');
+  }
+
+  function setDone() {
+    status.textContent = 'TERMINÉ';
+    status.style.color = '#34d399';
+    btnStart.classList.remove('hidden');
+    btnStop.classList.add('hidden');
+    btnStart.disabled = false;
+    btnStart.style.opacity = '1';
+  }
+
+  function setIdle() {
+    status.textContent = '—';
+    status.style.color = '';
+    btnStart.classList.remove('hidden');
+    btnStop.classList.add('hidden');
+  }
+
+  function startStream() {
+    if (_src) { _src.close(); _src = null; }
+    _src = new EventSource('/api/benchmark/stream');
+    _src.onmessage = (e) => {
+      if (e.data === '[DONE]') {
+        _src.close(); _src = null;
+        setDone();
+        return;
+      }
+      appendLine(e.data);
+    };
+    _src.onerror = () => {
+      if (_src) { _src.close(); _src = null; }
+      setDone();
+    };
+  }
+
+  async function startBenchmark() {
+    btnStart.disabled = true;
+    btnStart.style.opacity = '0.5';
+    out.innerHTML = '';
+    setRunning();
+    await fetch('/api/benchmark/start', {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token() }}'}
+    });
+    startStream();
+  }
+
+  async function stopBenchmark() {
+    await fetch('/api/benchmark/stop', {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token() }}'}
+    });
+    if (_src) { _src.close(); _src = null; }
+    setDone();
+  }
+
+  // À l'arrivée sur la page : récupère l'état et l'output existant
+  (async () => {
+    const r = await fetch('/api/benchmark/status');
+    const d = await r.json();
+    if (d.output) {
+      d.output.split('\n').forEach(l => { if (l) appendLine(l); });
+    }
+    if (d.status === 'running') {
+      setRunning();
+      startStream();
+    } else if (d.status === 'done') {
+      setDone();
+    } else {
+      setIdle();
+    }
+  })();
+</script>
+
+{% endblock %}

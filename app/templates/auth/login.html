@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SameBreaker — Connexion</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#050b14; color:#cce8f4; font-family:system-ui,sans-serif; }
+    .field { width:100%; padding:10px 14px; border-radius:8px; background:#0d2240;
+             border:1px solid #1a3a5c; color:#cce8f4; font-size:14px; outline:none; transition:.2s; }
+    .field:focus { border-color:#00b4d8; box-shadow:0 0 0 2px rgba(0,180,216,.15); }
+    .field::placeholder { color:#5a8fa8; }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-sm flex flex-col gap-6">
+    <div class="text-center">
+      <img src="/static/assets/logo.png" alt="SameBreaker" class="w-70 h-70 object-contain mx-auto mb-2" />
+      <div id="shark-text" style="font-size:12px; color:#00b4d8; font-family:monospace;
+                                   min-height:2.6em; line-height:1.4; letter-spacing:.03em;"></div>
+      <div style="font-size:12px; color:#5a8fa8; letter-spacing:.1em; font-family:monospace; margin-top:4px;">Ver 1.0.0</div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="text-sm px-4 py-3 rounded-lg
+          {% if cat == 'error' %}bg-red-900/40 text-red-400 border border-red-800{% else %}bg-green-900/40 text-green-400 border border-green-800{% endif %}">
+          {{ msg }}
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('auth.login') }}"
+          class="flex flex-col gap-4 p-6 rounded-xl border"
+          style="background:#091828; border-color:#0d2240;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="flex flex-col gap-1">
+        <label class="text-xs" style="color:#5a8fa8;">Identifiant</label>
+        <input name="username" class="field" required autofocus placeholder="admin" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs" style="color:#5a8fa8;">Mot de passe</label>
+        <input name="password" type="password" class="field" required placeholder="••••••••" />
+      </div>
+      <button type="submit"
+              class="w-full py-2.5 rounded-lg font-semibold text-sm transition-all"
+              style="background:#00b4d8; color:#050b14;">
+        Connexion
+      </button>
+    </form>
+  </div>
+
+<script>
+  (function() {
+    var el = document.getElementById('shark-text');
+    if (!el) return;
+    var lines = ['サメ！サメ！サメ、サメ！', 'サメに気をつけろ！'];
+    var lineIdx = 0, charIdx = 0, deleting = false;
+    var DELAY_TYPE = 90, DELAY_PAUSE = 1800, DELAY_DELETE = 40, DELAY_NEXT = 400;
+    function tick() {
+      var line = lines[lineIdx];
+      if (!deleting) {
+        charIdx++;
+        el.textContent = line.slice(0, charIdx);
+        if (charIdx === line.length) {
+          if (lineIdx === lines.length - 1) {
+            setTimeout(function() { deleting = true; tick(); }, DELAY_PAUSE);
+          } else {
+            setTimeout(function() {
+              lineIdx++;
+              charIdx = 0;
+              el.textContent = lines.slice(0, lineIdx).join('\n');
+              tick();
+            }, DELAY_NEXT);
+          }
+          return;
+        }
+      } else {
+        if (lineIdx > 0) {
+          lineIdx--;
+          el.textContent = lines.slice(0, lineIdx + 1).join('\n');
+          setTimeout(tick, DELAY_DELETE * 8);
+          return;
+        } else {
+          charIdx--;
+          el.textContent = line.slice(0, charIdx);
+          if (charIdx === 0) {
+            deleting = false;
+            lineIdx = 0;
+            setTimeout(tick, DELAY_NEXT);
+            return;
+          }
+        }
+      }
+      setTimeout(tick, deleting ? DELAY_DELETE : DELAY_TYPE);
+    }
+    setTimeout(tick, 600);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Système — SameBreaker{% endblock %}
+{% block page_title %}Statut système{% endblock %}
+
+{% block content %}
+
+<!-- Dépendances -->
+<div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+  <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Dépendances</h2>
+  <div class="flex flex-col gap-3">
+
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="w-2 h-2 rounded-full {% if hashcat_ok %}bg-ok pulse{% else %}bg-danger{% endif %}"></span>
+        <span class="font-medium text-ink text-sm">hashcat</span>
+      </div>
+      {% if hashcat_ok %}
+        <span class="text-xs text-ok">{{ hashcat_version }}</span>
+      {% else %}
+        <span class="text-xs text-danger">Non trouvé — <code class="text-ink-muted">apt install hashcat</code></span>
+      {% endif %}
+    </div>
+
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="w-2 h-2 rounded-full {% if nth_ok %}bg-ok{% else %}bg-danger{% endif %}"></span>
+        <span class="font-medium text-ink text-sm">name-that-hash</span>
+      </div>
+      {% if nth_ok %}
+        <span class="text-xs text-ok">Installé</span>
+      {% else %}
+        <span class="text-xs text-danger">Non trouvé — <code class="text-ink-muted">pip install name-that-hash</code></span>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<!-- GPU devices -->
+<div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+  <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">GPU / Devices</h2>
+  {% if devices %}
+    <div class="flex flex-col gap-2">
+      {% for d in devices %}
+      <div class="flex items-center gap-3 px-4 py-3 rounded-lg" style="background:#0d2240;">
+        <span class="text-accent font-bold text-sm">#{{ d.id }}</span>
+        <span class="text-ink text-sm">{{ d.name }}</span>
+        <span class="ml-auto text-xs text-ink-muted">{{ d.type }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-ink-muted">
+      {% if hashcat_ok %}Aucun device détecté.{% else %}hashcat non disponible.{% endif %}
+    </p>
+  {% endif %}
+</div>
+
+<!-- Wordlists -->
+<div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+  <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Wordlists disponibles</h2>
+  {% if wordlists %}
+    <div class="flex flex-col gap-1 max-h-64 overflow-y-auto">
+      {% for w in wordlists %}
+      <div class="flex items-center justify-between px-3 py-2 rounded text-xs" style="background:#0d2240;">
+        <span class="text-ink font-mono">{{ w.name }}</span>
+        <span class="text-ink-muted">{{ (w.size / 1024 / 1024) | round(1) }} MB</span>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-ink-muted">
+      Aucune wordlist trouvée dans
+      <code class="text-accent">/usr/share/wordlists</code>,
+      <code class="text-accent">~/wordlists</code> ou
+      <code class="text-accent">wordlists/</code>.
+    </p>
+  {% endif %}
+</div>
+
+{% endblock %}

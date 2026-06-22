@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Modifier' if action == 'edit' else 'Nouvel' }} utilisateur — SameBreaker{% endblock %}
+{% block page_title %}{{ 'Modifier' if action == 'edit' else 'Nouvel' }} utilisateur{% endblock %}
+
+{% block head %}
+<style>
+  .form-label { display:block; font-size:12px; color:#5a8fa8; margin-bottom:4px;
+                text-transform:uppercase; letter-spacing:.05em; }
+  .form-input { width:100%; padding:9px 12px; border-radius:8px; background:#0d2240;
+                border:1px solid #1a3a5c; color:#cce8f4; font-size:13px; outline:none; transition:.2s; }
+  .form-input:focus { border-color:#00b4d8; }
+  select.form-input option { background:#0d2240; }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="POST" class="flex flex-col gap-5 w-full">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+  <!-- Username (new only) -->
+  {% if action == 'new' %}
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div>
+      <label class="form-label">Username</label>
+      <input name="username" class="form-input" required autofocus placeholder="john_doe" />
+    </div>
+    <div>
+      <label class="form-label">Mot de passe</label>
+      <input name="password" type="password" class="form-input" required placeholder="••••••••" />
+    </div>
+  </div>
+  {% else %}
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div>
+      <label class="form-label">Nom d'utilisateur</label>
+      <input name="username" class="form-input" required value="{{ user.username }}" autocomplete="off" />
+    </div>
+    <div>
+      <label class="form-label">Nouveau mot de passe (laisser vide = inchangé)</label>
+      <input name="password" type="password" class="form-input" placeholder="••••••••" autocomplete="new-password" />
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Rôle -->
+  <div class="rounded-xl border p-5 flex flex-col gap-3" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Rôle</label>
+    <div class="flex gap-3">
+      {% for r, label, desc in [('user','Utilisateur','Accès limité aux GPU assignés'),('admin','Administrateur','Accès complet, gestion des users')] %}
+      <label class="flex-1 flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all"
+             style="background:#0d2240; border-color:#1a3a5c;">
+        <input type="radio" name="role" value="{{ r }}"
+               {% if (user and user.role == r) or (not user and r == 'user') %}checked{% endif %}
+               class="mt-0.5 accent-accent" />
+        <div>
+          <div class="text-sm font-medium text-ink">{{ label }}</div>
+          <div class="text-xs text-ink-muted mt-0.5">{{ desc }}</div>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- GPU assignment -->
+  <div class="rounded-xl border p-5 flex flex-col gap-3" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">GPU assignés</label>
+    {% if devices %}
+    <div class="flex flex-col gap-2">
+      {% set assigned = (user.allowed_devices.split(',') if user and user.allowed_devices else []) %}
+      {% for d in devices %}
+      <label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all"
+             style="background:#0d2240; border-color:#1a3a5c;">
+        <input type="checkbox" name="devices" value="{{ d.id }}"
+               {% if d.id | string in assigned %}checked{% endif %}
+               class="accent-accent" />
+        <div class="flex-1">
+          <div class="text-sm font-medium text-ink">#{{ d.id }} — {{ d.name }}</div>
+          <div class="text-xs text-ink-muted">{{ d.type }}</div>
+        </div>
+        <span class="text-xs px-2 py-0.5 rounded"
+              style="background:#0d3a1a; color:#34d399;">DÉTECTÉ</span>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="text-xs text-ink-muted">Les admins ont accès à tous les GPU indépendamment de ce paramètre.</p>
+    {% else %}
+    <div class="text-sm text-warn px-3 py-2 rounded-lg" style="background:#3a2a00; border:1px solid #5c4000;">
+      Aucun GPU détecté par hashcat. Installez les drivers OpenCL/CUDA.
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Workload profile -->
+  <div class="rounded-xl border p-5 flex flex-col gap-3" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Workload profile (hashcat -w)</label>
+    <div class="flex gap-2 flex-wrap">
+      {% for w, label in workload_labels.items() %}
+      <label class="flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-all"
+             style="background:#0d2240; border-color:#1a3a5c;">
+        <input type="radio" name="workload_profile" value="{{ w }}"
+               {% if (user and user.workload_profile == w) or (not user and w == 2) %}checked{% endif %}
+               class="accent-accent" />
+        <div>
+          <span class="text-sm font-mono text-accent">-w {{ w }}</span>
+          <span class="text-xs text-ink-muted ml-1">{{ label }}</span>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="text-xs text-ink-muted">Contrôle l'agressivité de hashcat sur le GPU. High/Nightmare = GPU monopolisé.</p>
+  </div>
+
+  <div class="flex gap-3">
+    <button type="submit"
+            class="flex-1 py-3 rounded-xl font-bold text-sm transition-all"
+            style="background:#00b4d8; color:#050b14;">
+      {{ 'Mettre à jour' if action == 'edit' else 'Créer l\'utilisateur' }}
+    </button>
+    <a href="{{ url_for('admin.users') }}"
+       class="px-6 py-3 rounded-xl text-sm font-medium transition-all"
+       style="background:#0d2240; color:#5a8fa8; border:1px solid #1a3a5c;">
+      Annuler
+    </a>
+  </div>
+</form>
+{% endblock %}

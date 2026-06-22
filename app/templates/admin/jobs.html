@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Audit jobs — SameBreaker{% endblock %}
+{% block page_title %}Audit des jobs{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between flex-wrap gap-3">
+  <p class="text-sm text-ink-muted">{{ jobs | length }} job(s) au total</p>
+  <div class="flex gap-2 flex-wrap" id="audit-filter-btns">
+    <button onclick="auditFilter('all')"       class="btn btn-primary btn-xs"    id="af-all">Tous</button>
+    <button onclick="auditFilter('running')"   class="btn btn-secondary btn-xs"  id="af-running">En cours</button>
+    <button onclick="auditFilter('completed')" class="btn btn-secondary btn-xs"  id="af-completed">Terminés</button>
+    <button onclick="auditFilter('failed')"    class="btn btn-secondary btn-xs"  id="af-failed">Échoués</button>
+    <button onclick="auditFilter('stopped')"   class="btn btn-secondary btn-xs"  id="af-stopped">Stoppés</button>
+    <button onclick="auditFilter('pending')"   class="btn btn-secondary btn-xs"  id="af-pending">En attente</button>
+  </div>
+</div>
+
+<div class="rounded-xl border overflow-hidden overflow-x-auto" style="border-color:#0d2240;">
+  <table class="w-full text-sm min-w-[700px]">
+    <thead style="background:#0d2240;">
+      <tr class="text-left text-ink-muted text-xs uppercase tracking-wider">
+        <th class="px-4 py-3">#</th>
+        <th class="px-4 py-3">Utilisateur</th>
+        <th class="px-4 py-3">Nom</th>
+        <th class="px-4 py-3">Type hash</th>
+        <th class="px-4 py-3">Mode</th>
+        <th class="px-4 py-3">Statut</th>
+        <th class="px-4 py-3">Créé</th>
+        <th class="px-4 py-3"></th>
+      </tr>
+    </thead>
+    <tbody id="audit-tbody">
+      {% for job in jobs %}
+      <tr class="border-t hover:bg-card/30 transition-colors audit-row"
+          data-status="{{ job.status }}"
+          style="border-color:#0d2240;">
+        <td class="px-4 py-3 text-ink-muted">{{ job.id }}</td>
+        <td class="px-4 py-3">
+          <span class="text-xs px-2 py-0.5 rounded font-mono"
+                style="background:#0d2240; color:#00b4d8; border:1px solid #1a3a5c;">
+            {{ job.creator_name or '—' }}
+          </span>
+        </td>
+        <td class="px-4 py-3 font-medium text-ink">{{ job.name }}</td>
+        <td class="px-4 py-3 text-ink-muted text-xs">
+          {% if job.hash_type_name %}{{ job.hash_type_name }}{% endif %}
+          <span class="text-accent/60">(-m {{ job.hash_type }})</span>
+        </td>
+        <td class="px-4 py-3 text-ink-muted text-xs">
+          {{ attack_modes.get(job.attack_mode, job.attack_mode) }}
+        </td>
+        <td class="px-4 py-3">
+          <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
+        </td>
+        <td class="px-4 py-3 text-ink-muted text-xs">{{ job.created_at[:16] }}</td>
+        <td class="px-4 py-3">
+          <a href="{{ url_for('main.job_detail', job_id=job.id) }}"
+             class="btn btn-secondary btn-xs">Voir →</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="px-4 py-10 text-center text-ink-muted text-sm">Aucun job enregistré.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  function auditFilter(status) {
+    ['all','running','completed','failed','stopped','pending'].forEach(function(s) {
+      var btn = document.getElementById('af-' + s);
+      if (btn) btn.className = s === status ? 'btn btn-primary btn-xs' : 'btn btn-secondary btn-xs';
+    });
+    var visible = 0;
+    document.querySelectorAll('.audit-row').forEach(function(row) {
+      var show = status === 'all' || row.dataset.status === status;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    var nfr = document.getElementById('audit-no-row');
+    if (visible === 0) {
+      if (!nfr) {
+        var tr = document.createElement('tr');
+        tr.id = 'audit-no-row';
+        tr.innerHTML = '<td colspan="8" class="px-4 py-8 text-center text-ink-muted text-sm">Aucun job avec ce statut.</td>';
+        document.getElementById('audit-tbody').appendChild(tr);
+      } else {
+        nfr.style.display = '';
+      }
+    } else if (nfr) {
+      nfr.style.display = 'none';
+    }
+  }
+</script>
+
+{% endblock %}
