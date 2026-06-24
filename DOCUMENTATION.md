@@ -1,6 +1,6 @@
 # SameBreaker — Documentation technique ![](img/gura.png)
 
-> *Ver 1.0.0*
+> *Ver 1.1.0*
 
 ---
 

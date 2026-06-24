@@ -273,4 +273,5 @@ gunicorn -w 1 -b 0.0.0.0:6660 "app:create_app()"
 
 | Version | Changement principal |
 |---------|---------------------|
+| v1.1.0 | Durée live dashboard, tri des colonnes, auto-refresh, barre de progression + ETA, copier résultats, notification navigateur, compteur de hash, 2FA profil, éditeur config admin |
 | v1.0.0 | Version initiale — UI Tailwind, multi-user, détection hash auto, streaming SSE, GPU busy, workload chips admin, audit sécu, filtres dashboard, relancer/reprendre job, badge sidebar, audit log admin, recovery crash, limite jobs simultanés, security headers |
