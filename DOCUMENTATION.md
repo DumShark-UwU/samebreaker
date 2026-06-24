@@ -13,9 +13,9 @@ Navigateur
     │  HTTP / SSE
     ▼
 Flask (run.py → create_app())
-    ├── Blueprint auth   — /login, /logout
-    ├── Blueprint main   — /, /attack/*, /api/*, /benchmark, /profile, /system
-    └── Blueprint admin  — /admin/users/*, /admin/jobs
+    ├── Blueprint auth   — /login, /logout, /2fa/setup, /2fa/verify
+    ├── Blueprint main   — /, /attack/*, /api/*, /benchmark, /profile, /profile/2fa/*, /system
+    └── Blueprint admin  — /admin/users/*, /admin/jobs, /admin/config
             │
             ▼
     SQLite (instance/samebreaker.db)
@@ -36,7 +36,7 @@ Flask (run.py → create_app())
 | `role` | TEXT | `admin` ou `user` |
 | `allowed_devices` | TEXT | IDs GPU séparés par virgule (`"1,2"`) |
 | `workload_profile` | INTEGER | Profil hashcat `-w` (1–4, défaut 2) |
-| `totp_secret` | TEXT | Réservé 2FA (non implémenté) |
+| `totp_secret` | TEXT | Secret TOTP Base32 (null si 2FA non configuré) |
 | `must_change_password` | INTEGER | `1` = bannière de changement obligatoire |
 | `created_at` | DATETIME | Date de création |
 
@@ -249,6 +249,19 @@ else:
     flash(f"Job #{job_id} en attente — limite de {MAX_CONCURRENT_JOBS} atteinte.", "warn")
 ```
 
+**Routes profil 2FA :**
+
+| Route | Description |
+|-------|-------------|
+| `/profile` | GET : affiche statut 2FA, boutons Configurer/Reconfigurer/Désactiver. POST : changement de mot de passe |
+| `/profile/2fa/setup` | POST : génère un nouveau secret TOTP, vérifie le code soumis, sauvegarde en BDD |
+| `/profile/2fa/disable` | POST : efface `totp_secret` (bloqué si `REQUIRE_2FA` actif) |
+
+**UI améliorations v1.1.0 :**
+- `dashboard.html` — colonne Durée (`data-started`, `data-finished`, `_updateDurations()` chaque seconde), tri par colonne (`sortBy(col)`), auto-refresh 30 s si jobs running
+- `job_detail.html` — widget progression (`parseProgress(raw)` sur regex `Progress`, `Speed`, `ETA`) ; `copyLine()` / `copyAllResults()` via Clipboard API ; `_notifyDone(crackedCount)` via Notification API
+- `new_attack.html` — `updateHashCount()` oninput + debounce paste pour badge compteur de hash live
+
 ---
 
 ### `app/admin.py`
@@ -263,6 +276,7 @@ Gestion des utilisateurs + audit log (admin uniquement).
 | `/admin/users/<id>/delete` | Suppression (sauf soi-même) |
 | `/admin/users/<id>/reset-2fa` | Réinitialise le secret TOTP — l'utilisateur devra le reconfigurer |
 | `/admin/jobs` | Audit log — tous les jobs avec `LEFT JOIN users` |
+| `/admin/config` | GET : affiche formulaire de configuration. POST : valide, écrit `config.json`, applique les changements à chaud (no restart) |
 
 **Validation centralisée :**
 ```python

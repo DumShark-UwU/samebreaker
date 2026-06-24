@@ -10,13 +10,17 @@ Interface web multi-utilisateurs pour hashcat — gestion de jobs de cassage de 
 
 - **Interface web complète** — dashboard, nouvelle attaque, détail de job, benchmark, profil
 - **Multi-utilisateurs** — rôles `admin` / `user`, accès par GPU assigné, workload profile par user
-- **Détection automatique de hash** — via `name_that_hash`, déclenchée au collé + bouton manuel
+- **Détection automatique de hash** — via `name_that_hash`, déclenchée au collé + bouton manuel, avec compteur de hash live
 - **Gestion GPU** — détection live des devices, GPU occupé grisé et non-sélectionnable
 - **5 modes d'attaque** — Dictionnaire, Combinateur, Brute-force/Mask, Hybride ×2
 - **Streaming de logs en temps réel** — Server-Sent Events directement depuis le fichier log hashcat
+- **Barre de progression + ETA** — parsing live du statut hashcat (vitesse, avancement %, temps restant)
+- **Dashboard amélioré** — colonne Durée mise à jour chaque seconde, colonnes triables, auto-refresh toutes les 30 s si jobs actifs
 - **Filtres dashboard** — filtrage JS par statut (running, completed, failed, stopped, pending)
 - **Relancer un job** — pré-remplit le formulaire avec les paramètres d'un job existant
 - **Reprendre un job** — reprise via fichier de session hashcat (`--restore-file-path`)
+- **Copier les résultats** — bouton par ligne + "Tout copier" via Clipboard API
+- **Notification navigateur** — alerte native à la fin d'un job (Notification API)
 - **Confirmation d'arrêt** — UI inline, sans dialog navigateur
 - **Badge sidebar** — compteur animé des jobs en cours sur le lien Dashboard
 - **Audit log** — vue admin de tous les jobs avec utilisateur associé
@@ -27,7 +31,8 @@ Interface web multi-utilisateurs pour hashcat — gestion de jobs de cassage de 
 - **Benchmark** — lancement/arrêt admin, streaming de sortie en live
 - **Compte par défaut** — `admin` / `admin` créé automatiquement au premier démarrage
 - **Bannière de sécurité** — notification persistante tant que le mot de passe par défaut n'est pas changé
-- **2FA TOTP optionnel** — activable via `config.json`, setup QR code à la première connexion, compatible Google Authenticator / Authy / Bitwarden
+- **2FA TOTP optionnel** — activable via `config.json`, setup QR code à la première connexion, compatible Google Authenticator / Authy / Bitwarden ; auto-gestion depuis le profil utilisateur
+- **Éditeur de configuration** — interface web admin (`/admin/config`) pour modifier `config.json` à chaud, sans redémarrage
 - **Rate limiting** — 10 tentatives de login / 30 détections de hash par IP sur fenêtre glissante
 - **Session idle timeout** — déconnexion automatique après inactivité (configurable, défaut 60 min)
 - **CSRF** — protection sur tous les formulaires et endpoints POST
@@ -105,6 +110,8 @@ python seed_admin.py
 | Lancer / arrêter le benchmark | ❌ | ✅ |
 | Gérer les utilisateurs | ❌ | ✅ |
 | Audit log (tous les jobs) | ❌ | ✅ |
+| Éditeur de configuration | ❌ | ✅ |
+| Réinitialiser le 2FA d'un user | ❌ | ✅ |
 
 ---
 
@@ -134,16 +141,19 @@ python seed_admin.py
 | `/system` | GET | Auth | Infos système (GPU, wordlists) |
 | `/benchmark` | GET | Auth | Page benchmark |
 | `/profile` | GET / POST | Auth | Profil + changement de mot de passe |
+| `/profile/2fa/setup` | POST | Auth | Activer / reconfigurer son propre 2FA depuis le profil |
+| `/profile/2fa/disable` | POST | Auth | Désactiver son propre 2FA (bloqué si `require_2fa` actif) |
 | `/admin/users` | GET | Admin | Liste des utilisateurs |
 | `/admin/users/new` | GET / POST | Admin | Créer un utilisateur |
 | `/admin/users/<id>/edit` | GET / POST | Admin | Modifier un utilisateur |
 | `/admin/users/<id>/delete` | POST | Admin | Supprimer un utilisateur |
+| `/admin/users/<id>/reset-2fa` | POST | Admin | Réinitialiser le secret TOTP d'un utilisateur |
 | `/admin/jobs` | GET | Admin | Audit log — tous les jobs |
+| `/admin/config` | GET / POST | Admin | Éditeur de configuration (config.json, appliqué à chaud) |
 | `/login` | GET / POST | Public | Authentification |
 | `/2fa/setup` | GET / POST | Session 2FA | Configuration TOTP (QR code + vérification) |
 | `/2fa/verify` | GET / POST | Session 2FA | Saisie du code TOTP lors du login |
 | `/logout` | POST | Auth | Déconnexion |
-| `/admin/users/<id>/reset-2fa` | POST | Admin | Réinitialiser le secret TOTP d'un utilisateur |
 
 ### API JSON
 
@@ -180,7 +190,9 @@ samebreaker/
 │   └── templates/
 │       ├── base.html
 │       ├── auth/
-│       │   └── login.html
+│       │   ├── login.html
+│       │   ├── 2fa_setup.html
+│       │   └── 2fa_verify.html
 │       ├── main/
 │       │   ├── dashboard.html
 │       │   ├── new_attack.html
@@ -191,7 +203,8 @@ samebreaker/
 │       └── admin/
 │           ├── users.html
 │           ├── user_form.html
-│           └── jobs.html
+│           ├── jobs.html
+│           └── config.html
 ├── instance/               # Généré au runtime (gitignored)
 │   ├── config.json         # SECRET_KEY persistée
 │   ├── samebreaker.db      # Base SQLite
@@ -250,7 +263,9 @@ Pour activer le 2FA, éditer `instance/config.json` et passer `require_2fa` à `
 2. **Première connexion** → QR code à scanner (Google Authenticator, Authy, Bitwarden…)
 3. **Connexions suivantes** → code TOTP à 6 chiffres requis
 
-**Admin :** la page `/admin/users` affiche le statut 2FA de chaque utilisateur. Le bouton **Reset 2FA** force une reconfiguration (perte d'appareil). Seul le secret TOTP est réinitialisé, pas le mot de passe.
+**Auto-gestion :** depuis `/profile`, chaque utilisateur peut activer, reconfigurer ou désactiver son propre 2FA sans passer par un admin (la désactivation est bloquée si `require_2fa` est actif).
+
+**Admin :** la page `/admin/users` affiche le statut 2FA de chaque utilisateur. Le bouton **Reset 2FA** force une reconfiguration (perte d'appareil). La page `/admin/config` permet de basculer `require_2fa` depuis l'interface web, sans éditer `config.json` à la main.
 
 ```
 pip install -r requirements.txt  # inclut pyotp==2.9.0
