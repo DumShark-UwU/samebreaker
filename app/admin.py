@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
 import sqlite3
+from datetime import timedelta
 from functools import wraps
 from typing import Callable, Optional
 
@@ -201,6 +204,45 @@ def delete_user(user_id: int):
         conn.commit()
     flash("Utilisateur supprimé.", "success")
     return redirect(url_for("admin.users"))
+
+
+@bp.route("/config", methods=["GET", "POST"])
+@login_required
+@admin_required
+def config_editor():
+    cfg_path = os.path.join(current_app.instance_path, "config.json")
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        cfg = {}
+
+    if request.method == "POST":
+        cfg["require_2fa"]             = request.form.get("require_2fa") == "1"
+        cfg["hashcat_force"]           = request.form.get("hashcat_force") == "1"
+        cfg["max_concurrent_jobs"]     = max(1, min(50, int(request.form.get("max_concurrent_jobs", 5) or 5)))
+        cfg["max_upload_mb"]           = max(10, min(500, int(request.form.get("max_upload_mb", 50) or 50)))
+        cfg["session_timeout_minutes"] = max(5, min(480, int(request.form.get("session_timeout_minutes", 60) or 60)))
+
+        try:
+            with open(cfg_path, "w") as f:
+                json.dump(cfg, f, indent=2)
+        except OSError as exc:
+            flash(f"Impossible d'écrire config.json : {exc}", "error")
+            return redirect(url_for("admin.config_editor"))
+
+        # Appliquer immédiatement les changements live
+        from . import hashcat_utils, jobs as jobs_module
+        hashcat_utils.HASHCAT_FORCE     = cfg["hashcat_force"]
+        jobs_module.MAX_CONCURRENT_JOBS = cfg["max_concurrent_jobs"]
+        current_app.config["REQUIRE_2FA"]                = cfg["require_2fa"]
+        current_app.config["MAX_CONTENT_LENGTH"]         = cfg["max_upload_mb"] * 1024 * 1024
+        current_app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=cfg["session_timeout_minutes"])
+
+        flash("Configuration mise à jour et appliquée.", "success")
+        return redirect(url_for("admin.config_editor"))
+
+    return render_template("admin/config.html", cfg=cfg)
 
 
 @bp.route("/users/<int:user_id>/reset-2fa", methods=["POST"])

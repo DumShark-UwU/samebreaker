@@ -14,6 +14,15 @@
   .info-label { color:#5a8fa8; min-width:130px; font-size:11px; text-transform:uppercase; }
   .info-value { color:#cce8f4; }
   #confirm-stop { display:none; }
+  /* Barre de progression */
+  #progress-widget { transition:opacity .3s; }
+  #progress-bar-inner { transition:width .5s ease; }
+  /* Bouton copier résultat */
+  .copy-btn { opacity:0; transition:opacity .15s; cursor:pointer; padding:2px 6px;
+              border-radius:4px; font-size:10px; border:none;
+              background:#1a3a5c; color:#00b4d8; }
+  .result-line:hover .copy-btn { opacity:1; }
+  .copy-btn.copied { background:#0d3a1a; color:#34d399; }
 </style>
 {% endblock %}
 
@@ -25,7 +34,6 @@
     <span class="badge badge-{{ job.status }} text-sm px-3 py-1">{{ job.status }}</span>
 
     {% if job.status == 'running' %}
-    <!-- Bouton stop avec confirmation inline -->
     <div class="flex items-center gap-2">
       <button onclick="showConfirmStop()" class="btn btn-danger btn-sm" id="btn-stop-init">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,7 +57,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
       <button type="submit" class="btn btn-warn btn-sm">
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
         Reprendre
@@ -57,7 +66,6 @@
     </form>
     {% endif %}
 
-    <!-- Relancer avec les mêmes paramètres -->
     <a href="{{ url_for('main.new_attack', from_job=job.id) }}" class="btn btn-secondary btn-sm">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -68,6 +76,24 @@
 
     <a href="{{ url_for('main.index') }}" class="btn btn-secondary btn-sm ml-auto">← Dashboard</a>
   </div>
+
+  <!-- Widget progression (visible uniquement si running) -->
+  {% if job.status in ('running', 'pending') %}
+  <div id="progress-widget" class="rounded-xl border p-4 flex flex-col gap-2"
+       style="background:#091828; border-color:#0d2240;">
+    <div class="flex items-center justify-between text-xs text-ink-muted">
+      <span id="progress-label">Démarrage…</span>
+      <div class="flex gap-4">
+        <span id="speed-label" class="text-accent font-mono"></span>
+        <span id="eta-label"></span>
+      </div>
+    </div>
+    <div class="w-full rounded-full overflow-hidden" style="height:6px; background:#0d2240;">
+      <div id="progress-bar-inner" class="h-full rounded-full"
+           style="width:0%; background:linear-gradient(90deg,#00b4d8,#0096b7);"></div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Infos job -->
   <div class="rounded-xl border p-5" style="background:#091828; border-color:#0d2240;">
@@ -115,18 +141,26 @@
         </span>
         {% endif %}
       </div>
-      <a href="{{ url_for('main.download_results', job_id=job.id) }}" class="btn btn-success btn-xs">
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-        </svg>
-        Télécharger
-      </a>
+      <div class="flex gap-2">
+        <button onclick="copyAllResults()" class="btn btn-secondary btn-xs" id="copy-all-btn">
+          Tout copier
+        </button>
+        <a href="{{ url_for('main.download_results', job_id=job.id) }}" class="btn btn-success btn-xs">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Télécharger
+        </a>
+      </div>
     </div>
     <div id="results-list" class="flex flex-col gap-1">
       {% for line in results %}
-      <div class="font-mono text-xs px-3 py-2 rounded result-line"
-           style="background:#0d2240; color:#34d399;">{{ line }}</div>
+      <div class="result-line font-mono text-xs px-3 py-2 rounded flex items-center justify-between gap-2"
+           style="background:#0d2240; color:#34d399;">
+        <span>{{ line }}</span>
+        <button class="copy-btn" onclick="copyLine(this, {{ line | tojson }})">copier</button>
+      </div>
       {% endfor %}
     </div>
   </div>
@@ -156,59 +190,148 @@
     document.getElementById('confirm-stop').style.display  = 'none';
   }
 
+  // ── Copier ────────────────────────────────────────────────────────────────
+  function copyLine(btn, text) {
+    navigator.clipboard.writeText(text).then(function() {
+      btn.textContent = '✓'; btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = 'copier'; btn.classList.remove('copied'); }, 1500);
+    });
+  }
+  function copyAllResults() {
+    var lines = Array.from(document.querySelectorAll('.result-line span')).map(function(el) {
+      return el.textContent.trim();
+    }).filter(Boolean);
+    if (!lines.length) return;
+    navigator.clipboard.writeText(lines.join('\n')).then(function() {
+      var btn = document.getElementById('copy-all-btn');
+      var orig = btn.textContent; btn.textContent = '✓ Copié !';
+      setTimeout(function() { btn.textContent = orig; }, 1500);
+    });
+  }
+
+  // ── Log + Progression ─────────────────────────────────────────────────────
   var logEl  = document.getElementById('log-output');
   var isLive = {{ 'true' if job.status in ('running', 'pending') else 'false' }};
   logEl.textContent = '';
 
+  var _progressWidget = document.getElementById('progress-widget');
+  var _progressBar    = document.getElementById('progress-bar-inner');
+  var _progressLabel  = document.getElementById('progress-label');
+  var _speedLabel     = document.getElementById('speed-label');
+  var _etaLabel       = document.getElementById('eta-label');
+
+  // Regex pour parser les lignes hashcat
+  var _reProgress = /Progress[.\s]*:\s*([\d.]+)%/i;
+  var _reProgressFrac = /Progress[.\s]*:\s*(\d+)\/(\d+)/i;
+  var _reSpeed    = /Speed[.\s#\d]*:\s*([\d.]+ [KMGT]?H\/s)/i;
+  var _reETA      = /(?:Time\.Estimated|ETA)[.\s]*:\s*(.+)/i;
+  var _reRecovered= /Recovered[.\s]*:\s*(\d+)\/(\d+)/i;
+
+  function parseProgress(raw) {
+    var m;
+    if ((m = _reProgress.exec(raw))) {
+      var pct = parseFloat(m[1]);
+      if (_progressBar) _progressBar.style.width = pct + '%';
+      if (_progressLabel) _progressLabel.textContent = pct.toFixed(2) + '%';
+    } else if ((m = _reProgressFrac.exec(raw))) {
+      var pct2 = Math.round(m[1] / m[2] * 10000) / 100;
+      if (_progressBar) _progressBar.style.width = pct2 + '%';
+      if (_progressLabel) _progressLabel.textContent = pct2.toFixed(2) + '%';
+    }
+    if ((m = _reSpeed.exec(raw))) {
+      if (_speedLabel) _speedLabel.textContent = m[1];
+    }
+    if ((m = _reETA.exec(raw))) {
+      if (_etaLabel) _etaLabel.textContent = 'ETA : ' + m[1].trim();
+    }
+    if ((m = _reRecovered.exec(raw)) && _progressLabel && m[1] > 0) {
+      if (_progressBar) _progressBar.style.background = 'linear-gradient(90deg,#34d399,#0d9488)';
+    }
+  }
+
   function appendLine(raw) {
+    parseProgress(raw);
     var line = document.createElement('div');
-    if (raw.includes('Speed') || raw.includes('H/s'))         line.style.color = '#00b4d8';
-    else if (raw.includes('Recovered') || raw.includes(':'))  line.style.color = '#34d399';
-    else if (raw.includes('ERROR') || raw.includes('ERREUR')) line.style.color = '#e05252';
-    else if (raw.includes('Warn') || raw.includes('NOTE'))    line.style.color = '#fbbf24';
+    if      (raw.match(/Speed|H\/s/i))              line.style.color = '#00b4d8';
+    else if (raw.match(/Recovered|:\s*[a-f0-9]/i))  line.style.color = '#34d399';
+    else if (raw.match(/ERROR|ERREUR/i))             line.style.color = '#e05252';
+    else if (raw.match(/Warn|NOTE/i))                line.style.color = '#fbbf24';
+    else if (raw.match(/Progress|ETA|Speed|Status/i))line.style.color = '#5a8fa8';
     line.textContent = raw;
     logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
   }
 
+  // ── Notification navigateur ───────────────────────────────────────────────
+  function _requestNotifPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }
+  if (isLive) _requestNotifPermission();
+
+  function _notifyDone(crackedCount) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    new Notification('SameBreaker — Job #{{ job.id }} terminé', {
+      body: crackedCount > 0
+        ? crackedCount + ' hash(es) cracké(s) — ' + '{{ job.name }}'
+        : 'Aucun résultat — ' + '{{ job.name }}',
+      icon: '/static/assets/logo.png',
+    });
+  }
+
+  // ── SSE ───────────────────────────────────────────────────────────────────
   var es = new EventSource('/api/jobs/{{ job.id }}/stream');
   es.onmessage = function(e) {
     if (e.data === '[DONE]') {
       es.close();
-      if (isLive) setTimeout(() => location.reload(), 1500);
+      if (isLive) {
+        var crackedCount = document.querySelectorAll('.result-line').length;
+        _notifyDone(crackedCount);
+        setTimeout(function() { location.reload(); }, 1500);
+      }
       return;
     }
     appendLine(e.data);
   };
   es.onerror = function() { es.close(); };
 
+  // ── Poll résultats (job en cours) ─────────────────────────────────────────
   {% if job.status in ('running', 'pending') %}
   var knownResults = new Set({{ results | map(attribute='__str__') | list | tojson if results else '[]' }});
   var resultsBox   = document.getElementById('results-box');
   var resultsList  = document.getElementById('results-list');
   var resultsTitle = document.getElementById('results-title');
 
+  function _makeResultLine(text, live) {
+    var div = document.createElement('div');
+    div.className = 'result-line font-mono text-xs px-3 py-2 rounded flex items-center justify-between gap-2';
+    div.style.background = '#0d2240';
+    div.style.color = live ? '#f97316' : '#34d399';
+    var span = document.createElement('span'); span.textContent = text;
+    var btn  = document.createElement('button');
+    btn.className = 'copy-btn'; btn.textContent = 'copier';
+    btn.onclick = function() { copyLine(btn, text); };
+    div.appendChild(span); div.appendChild(btn);
+    return div;
+  }
+
   function pollResults() {
     fetch('/api/jobs/{{ job.id }}/results')
-      .then(r => r.json())
-      .then(d => {
-        var fresh = d.results.filter(r => !knownResults.has(r));
-        fresh.forEach(r => {
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var fresh = d.results.filter(function(r) { return !knownResults.has(r); });
+        fresh.forEach(function(r) {
           knownResults.add(r);
-          var line = document.createElement('div');
-          line.className = 'font-mono text-xs px-3 py-2 rounded result-line';
-          line.style.background = '#0d2240';
-          line.style.color = '#f97316';
-          line.textContent = r;
-          resultsList.appendChild(line);
+          resultsList.appendChild(_makeResultLine(r, true));
         });
         if (d.results.length > 0) resultsBox.classList.remove('hidden');
         if (d.status === 'completed') {
-          document.querySelectorAll('.result-line').forEach(el => { el.style.color = '#34d399'; });
-          resultsTitle.style.color = '#34d399';
+          document.querySelectorAll('.result-line').forEach(function(el) { el.style.color = '#34d399'; });
+          if (resultsTitle) resultsTitle.style.color = '#34d399';
           clearInterval(_pollInterval);
         }
-      }).catch(() => {});
+      }).catch(function() {});
   }
   var _pollInterval = setInterval(pollResults, 3000);
   pollResults();

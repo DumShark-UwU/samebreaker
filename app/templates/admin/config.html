@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Configuration — SameBreaker{% endblock %}
+{% block page_title %}Configuration{% endblock %}
+
+{% block head %}
+<style>
+  .form-label { display:block; font-size:12px; color:#5a8fa8; margin-bottom:4px;
+                text-transform:uppercase; letter-spacing:.05em; }
+  .form-input { width:100%; padding:9px 12px; border-radius:8px; background:#0d2240;
+                border:1px solid #1a3a5c; color:#cce8f4; font-size:13px; outline:none; transition:.2s; }
+  .form-input:focus { border-color:#00b4d8; }
+  .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0;
+                border-bottom:1px solid #0d2240; }
+  .toggle-desc { font-size:12px; color:#5a8fa8; margin-top:2px; }
+  /* Toggle switch */
+  .switch { position:relative; display:inline-block; width:40px; height:22px; flex-shrink:0; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; cursor:pointer; inset:0; border-radius:22px;
+            background:#1a3a5c; transition:.2s; }
+  .slider::before { content:''; position:absolute; height:16px; width:16px; left:3px; bottom:3px;
+                    border-radius:50%; background:#5a8fa8; transition:.2s; }
+  input:checked + .slider { background:#00b4d8; }
+  input:checked + .slider::before { transform:translateX(18px); background:#050b14; }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="POST" class="flex flex-col gap-5 w-full">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+  <div class="rounded-xl border p-5 flex flex-col gap-1" style="background:#091828; border-color:#0d2240;">
+    <div class="text-xs text-ink-muted uppercase tracking-wider mb-3">Sécurité</div>
+
+    <!-- require_2fa -->
+    <div class="toggle-row">
+      <div>
+        <div class="text-sm font-medium text-ink">2FA TOTP obligatoire</div>
+        <div class="toggle-desc">Force tous les utilisateurs à configurer un second facteur.</div>
+      </div>
+      <label class="switch ml-4">
+        <input type="checkbox" name="require_2fa" value="1"
+               {% if cfg.get('require_2fa') %}checked{% endif %} />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <!-- hashcat_force -->
+    <div class="toggle-row" style="border:none;">
+      <div>
+        <div class="text-sm font-medium text-ink">hashcat --force</div>
+        <div class="toggle-desc">Ajoute <code class="text-accent">--force</code> à toutes les commandes hashcat (bypass vérifications GPU).</div>
+      </div>
+      <label class="switch ml-4">
+        <input type="checkbox" name="hashcat_force" value="1"
+               {% if cfg.get('hashcat_force', true) %}checked{% endif %} />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div class="text-xs text-ink-muted uppercase tracking-wider">Jobs & Performance</div>
+
+    <div>
+      <label class="form-label">Jobs simultanés max <span class="text-accent">(1–50)</span></label>
+      <input type="number" name="max_concurrent_jobs" class="form-input"
+             min="1" max="50" value="{{ cfg.get('max_concurrent_jobs', 5) }}" required />
+      <p class="text-xs mt-1" style="color:#5a8fa8;">Nombre de jobs hashcat pouvant tourner en parallèle.</p>
+    </div>
+
+    <div>
+      <label class="form-label">Taille max upload <span class="text-accent">(10–500 MB)</span></label>
+      <input type="number" name="max_upload_mb" class="form-input"
+             min="10" max="500" value="{{ cfg.get('max_upload_mb', 50) }}" required />
+      <p class="text-xs mt-1" style="color:#5a8fa8;">Limite pour les fichiers de hash et wordlists uploadés.</p>
+    </div>
+  </div>
+
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div class="text-xs text-ink-muted uppercase tracking-wider">Sessions</div>
+
+    <div>
+      <label class="form-label">Timeout d'inactivité <span class="text-accent">(5–480 min)</span></label>
+      <input type="number" name="session_timeout_minutes" class="form-input"
+             min="5" max="480" value="{{ cfg.get('session_timeout_minutes', 60) }}" required />
+      <p class="text-xs mt-1" style="color:#5a8fa8;">Déconnexion automatique après X minutes sans activité.</p>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3 px-4 py-3 rounded-lg border text-xs"
+       style="background:#3a2a00; border-color:#5c4000; color:#fbbf24;">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    Les changements sont appliqués immédiatement et persistés dans <code>instance/config.json</code>.
+    La <strong>SECRET_KEY</strong> ne peut pas être modifiée ici.
+  </div>
+
+  <div class="flex gap-3">
+    <button type="submit" class="flex-1 py-3 rounded-xl font-bold text-sm"
+            style="background:#00b4d8; color:#050b14;">
+      Enregistrer la configuration
+    </button>
+    <a href="{{ url_for('admin.users') }}" class="px-6 py-3 rounded-xl text-sm font-medium"
+       style="background:#0d2240; color:#5a8fa8; border:1px solid #1a3a5c;">
+      Annuler
+    </a>
+  </div>
+</form>
+{% endblock %}

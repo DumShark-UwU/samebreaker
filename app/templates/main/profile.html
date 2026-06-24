@@ -9,6 +9,7 @@
   .form-input { width:100%; padding:9px 12px; border-radius:8px; background:#0d2240;
                 border:1px solid #1a3a5c; color:#cce8f4; font-size:13px; outline:none; transition:.2s; }
   .form-input:focus { border-color:#00b4d8; }
+  .totp-field { letter-spacing:.3em; text-align:center; font-size:18px; }
 </style>
 {% endblock %}
 
@@ -34,11 +35,8 @@
     <div class="flex items-center justify-between">
       <span class="text-sm text-ink-muted">GPU assignés</span>
       <span class="text-sm text-ink font-mono">
-        {% if current_user.allowed_devices %}
-          {{ current_user.allowed_devices }}
-        {% else %}
-          <span class="text-ink-muted">aucun</span>
-        {% endif %}
+        {% if current_user.allowed_devices %}{{ current_user.allowed_devices }}
+        {% else %}<span class="text-ink-muted">aucun</span>{% endif %}
       </span>
     </div>
     <div class="flex items-center justify-between">
@@ -49,10 +47,10 @@
   </div>
 
   <!-- Changer le mot de passe -->
-  <form method="POST" class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+  <form method="POST" action="{{ url_for('main.profile') }}"
+        class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
     <div class="text-xs text-ink-muted uppercase tracking-wider mb-1">Changer le mot de passe</div>
-
     <div>
       <label class="form-label">Mot de passe actuel</label>
       <input name="current_password" type="password" class="form-input" required
@@ -68,13 +66,107 @@
       <input name="confirm_password" type="password" class="form-input" required
              autocomplete="new-password" placeholder="••••••••" minlength="8" />
     </div>
-
-    <button type="submit"
-            class="w-full py-3 rounded-xl font-bold text-sm transition-all mt-1"
+    <button type="submit" class="w-full py-3 rounded-xl font-bold text-sm transition-all mt-1"
             style="background:#00b4d8; color:#050b14;">
       Mettre à jour le mot de passe
     </button>
   </form>
 
+  <!-- Section 2FA -->
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div class="text-xs text-ink-muted uppercase tracking-wider mb-1">Authentification à deux facteurs (2FA)</div>
+
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        {% if has_2fa %}
+          <span class="w-2 h-2 rounded-full bg-ok pulse"></span>
+          <span class="text-sm font-medium text-ok">2FA actif</span>
+        {% else %}
+          <span class="w-2 h-2 rounded-full bg-danger"></span>
+          <span class="text-sm font-medium" style="color:#e05252;">2FA non configuré</span>
+        {% endif %}
+        {% if require_2fa %}
+          <span class="text-xs px-2 py-0.5 rounded"
+                style="background:#0d2240; color:#5a8fa8; border:1px solid #1a3a5c;">requis</span>
+        {% endif %}
+      </div>
+      <div class="flex gap-2">
+        {% if not has_2fa %}
+          <button onclick="show2FASetup()" class="btn btn-primary btn-sm">Configurer</button>
+        {% else %}
+          {% if not require_2fa %}
+          <form method="POST" action="{{ url_for('main.profile_2fa_disable') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Désactiver le 2FA ?')">Désactiver</button>
+          </form>
+          {% endif %}
+          <button onclick="show2FASetup()" class="btn btn-secondary btn-sm">Reconfigurer</button>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Setup inline (caché par défaut) -->
+    <div id="2fa-setup-zone" class="hidden flex-col gap-4">
+      <hr style="border-color:#0d2240;">
+
+      {% if totp_uri %}
+      <div class="flex flex-col items-center gap-3">
+        <p class="text-xs text-ink-muted text-center">
+          Scannez ce QR avec Google Authenticator, Authy ou Bitwarden, puis entrez le code ci-dessous.
+        </p>
+        <div id="qrcode-profile" style="padding:10px; background:#fff; border-radius:8px;"></div>
+        <div class="text-xs font-mono break-all select-all px-3 py-2 rounded-lg text-center w-full"
+             style="background:#0d2240; border:1px solid #1a3a5c; color:#00b4d8; letter-spacing:.1em;">
+          {{ totp_secret | upper }}
+        </div>
+      </div>
+      <form method="POST" action="{{ url_for('main.profile_2fa_setup') }}" class="flex flex-col gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div>
+          <label class="form-label">Code TOTP (6 chiffres)</label>
+          <input name="code" class="form-input totp-field" required
+                 inputmode="numeric" pattern="\d{6}" maxlength="6"
+                 placeholder="000000" autocomplete="one-time-code" />
+        </div>
+        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">
+          Vérifier et activer
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
 </div>
+
+{% if totp_uri %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSl6o+WRHxIZtEoQ09GmFYkqmcvS6Kuvp+Q=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+  function show2FASetup() {
+    var zone = document.getElementById('2fa-setup-zone');
+    if (!zone) return;
+    zone.classList.remove('hidden');
+    zone.style.display = 'flex';
+    if (!window._qrRendered) {
+      window._qrRendered = true;
+      new QRCode(document.getElementById('qrcode-profile'), {
+        text: {{ totp_uri | tojson }},
+        width: 160, height: 160,
+        colorDark: '#000000', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+  }
+  {% if show_setup %}show2FASetup();{% endif %}
+</script>
+{% else %}
+<script>
+  function show2FASetup() {
+    // Recharge la page avec ?setup=1 pour générer le QR
+    window.location.href = '{{ url_for("main.profile") }}?setup=1';
+  }
+</script>
+{% endif %}
 {% endblock %}

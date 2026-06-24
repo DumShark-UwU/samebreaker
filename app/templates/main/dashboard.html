@@ -2,6 +2,17 @@
 {% block title %}Dashboard — SameBreaker{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
+{% block head %}
+<style>
+  th.sortable { cursor:pointer; user-select:none; }
+  th.sortable:hover { color:#cce8f4; }
+  .sort-arrow { color:#1a3a5c; font-size:10px; margin-left:3px; }
+  th.sort-asc  .sort-arrow::after { content:'▲'; color:#00b4d8; }
+  th.sort-desc .sort-arrow::after { content:'▼'; color:#00b4d8; }
+  th.sortable:not(.sort-asc):not(.sort-desc) .sort-arrow::after { content:'↕'; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Statut hashcat -->
@@ -21,12 +32,12 @@
 <!-- Actions + filtres -->
 <div class="flex items-center gap-3 flex-wrap">
   <div class="flex gap-1 flex-wrap" id="filter-btns">
-    <button onclick="filterJobs('all')"   class="btn btn-sm btn-primary"    id="f-all">Tous</button>
-    <button onclick="filterJobs('running')"   class="btn btn-sm btn-secondary" id="f-running">En cours</button>
-    <button onclick="filterJobs('completed')" class="btn btn-sm btn-secondary" id="f-completed">Terminés</button>
-    <button onclick="filterJobs('failed')"    class="btn btn-sm btn-secondary" id="f-failed">Échoués</button>
-    <button onclick="filterJobs('stopped')"   class="btn btn-sm btn-secondary" id="f-stopped">Stoppés</button>
-    <button onclick="filterJobs('pending')"   class="btn btn-sm btn-secondary" id="f-pending">En attente</button>
+    <button onclick="filterJobs('all')"       class="btn btn-sm btn-primary"    id="f-all">Tous</button>
+    <button onclick="filterJobs('running')"   class="btn btn-sm btn-secondary"  id="f-running">En cours</button>
+    <button onclick="filterJobs('completed')" class="btn btn-sm btn-secondary"  id="f-completed">Terminés</button>
+    <button onclick="filterJobs('failed')"    class="btn btn-sm btn-secondary"  id="f-failed">Échoués</button>
+    <button onclick="filterJobs('stopped')"   class="btn btn-sm btn-secondary"  id="f-stopped">Stoppés</button>
+    <button onclick="filterJobs('pending')"   class="btn btn-sm btn-secondary"  id="f-pending">En attente</button>
   </div>
   <a href="{{ url_for('main.new_attack') }}" class="btn btn-primary btn-sm ml-auto">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -38,15 +49,16 @@
 
 <!-- Table jobs -->
 <div class="rounded-xl border overflow-hidden overflow-x-auto" style="border-color:#0d2240;">
-  <table class="w-full text-sm min-w-[600px]">
+  <table class="w-full text-sm min-w-[700px]" id="jobs-table">
     <thead style="background:#0d2240;">
       <tr class="text-left text-ink-muted text-xs uppercase tracking-wider">
-        <th class="px-4 py-3">#</th>
-        <th class="px-4 py-3">Nom</th>
+        <th class="px-4 py-3 sortable" onclick="sortBy('id')" id="th-id">#<span class="sort-arrow"></span></th>
+        <th class="px-4 py-3 sortable" onclick="sortBy('name')" id="th-name">Nom<span class="sort-arrow"></span></th>
         <th class="px-4 py-3">Type de hash</th>
-        <th class="px-4 py-3">Mode</th>
-        <th class="px-4 py-3">Statut</th>
-        <th class="px-4 py-3">Créé</th>
+        <th class="px-4 py-3 sortable" onclick="sortBy('mode')" id="th-mode">Mode<span class="sort-arrow"></span></th>
+        <th class="px-4 py-3 sortable" onclick="sortBy('status')" id="th-status">Statut<span class="sort-arrow"></span></th>
+        <th class="px-4 py-3 sortable" onclick="sortBy('created')" id="th-created">Créé<span class="sort-arrow"></span></th>
+        <th class="px-4 py-3 sortable" onclick="sortBy('duration')" id="th-duration">Durée<span class="sort-arrow"></span></th>
         <th class="px-4 py-3"></th>
       </tr>
     </thead>
@@ -54,6 +66,12 @@
       {% for job in jobs %}
       <tr class="border-t hover:bg-card/30 transition-colors job-row"
           data-status="{{ job.status }}"
+          data-id="{{ job.id }}"
+          data-name="{{ job.name | lower }}"
+          data-mode="{{ job.attack_mode }}"
+          data-created="{{ job.created_at }}"
+          data-started="{{ job.started_at or '' }}"
+          data-finished="{{ job.finished_at or '' }}"
           style="border-color:#0d2240;">
         <td class="px-4 py-3 text-ink-muted">{{ job.id }}</td>
         <td class="px-4 py-3 font-medium text-ink">{{ job.name }}</td>
@@ -73,6 +91,7 @@
           <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
         </td>
         <td class="px-4 py-3 text-ink-muted text-xs">{{ job.created_at[:16] }}</td>
+        <td class="px-4 py-3 text-ink-muted text-xs duration-cell">—</td>
         <td class="px-4 py-3">
           <a href="{{ url_for('main.job_detail', job_id=job.id) }}"
              class="btn btn-secondary btn-xs">Voir →</a>
@@ -80,7 +99,7 @@
       </tr>
       {% else %}
       <tr id="empty-row">
-        <td colspan="7" class="px-4 py-10 text-center text-ink-muted text-sm">
+        <td colspan="8" class="px-4 py-10 text-center text-ink-muted text-sm">
           Aucun job.
           <a href="{{ url_for('main.new_attack') }}" class="text-accent hover:underline">Lancer une attaque →</a>
         </td>
@@ -91,45 +110,111 @@
 </div>
 
 <script>
+  // ── Filtre par statut ─────────────────────────────────────────────────────
   var _activeFilter = 'all';
 
   function filterJobs(status) {
     _activeFilter = status;
-    // Mettre à jour les boutons
     ['all','running','completed','failed','stopped','pending'].forEach(function(s) {
       var btn = document.getElementById('f-' + s);
-      if (!btn) return;
-      if (s === status) {
-        btn.className = 'btn btn-sm btn-primary';
-      } else {
-        btn.className = 'btn btn-sm btn-secondary';
-      }
+      if (btn) btn.className = s === status ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
     });
-    // Filtrer les lignes
-    var rows = document.querySelectorAll('.job-row');
-    var visible = 0;
+    var rows = document.querySelectorAll('.job-row'), visible = 0;
     rows.forEach(function(row) {
       var show = status === 'all' || row.dataset.status === status;
       row.style.display = show ? '' : 'none';
       if (show) visible++;
     });
-    // Gérer la ligne "vide"
     var emptyRow = document.getElementById('empty-row');
     if (emptyRow) emptyRow.style.display = rows.length === 0 ? '' : 'none';
+    var nfr = document.getElementById('no-filter-row');
     if (rows.length > 0 && visible === 0) {
-      // Aucune ligne pour ce filtre
-      if (!document.getElementById('no-filter-row')) {
-        var tr = document.createElement('tr');
-        tr.id = 'no-filter-row';
-        tr.innerHTML = '<td colspan="7" class="px-4 py-8 text-center text-ink-muted text-sm">Aucun job avec ce statut.</td>';
+      if (!nfr) {
+        var tr = document.createElement('tr'); tr.id = 'no-filter-row';
+        tr.innerHTML = '<td colspan="8" class="px-4 py-8 text-center text-ink-muted text-sm">Aucun job avec ce statut.</td>';
         document.getElementById('jobs-tbody').appendChild(tr);
-      }
-      document.getElementById('no-filter-row').style.display = '';
-    } else {
-      var nfr = document.getElementById('no-filter-row');
-      if (nfr) nfr.style.display = 'none';
-    }
+      } else { nfr.style.display = ''; }
+    } else if (nfr) { nfr.style.display = 'none'; }
   }
+
+  // ── Tri des colonnes ──────────────────────────────────────────────────────
+  var _sortCol = 'id', _sortDir = -1;
+
+  function sortBy(col) {
+    if (_sortCol === col) { _sortDir *= -1; } else { _sortCol = col; _sortDir = -1; }
+    ['id','name','mode','status','created','duration'].forEach(function(c) {
+      var th = document.getElementById('th-' + c);
+      if (!th) return;
+      th.classList.remove('sort-asc','sort-desc');
+      if (c === col) th.classList.add(_sortDir === 1 ? 'sort-asc' : 'sort-desc');
+    });
+    var tbody = document.getElementById('jobs-tbody');
+    var rows  = Array.from(tbody.querySelectorAll('.job-row'));
+    rows.sort(function(a, b) {
+      var av, bv;
+      switch (col) {
+        case 'id':       av = +a.dataset.id;       bv = +b.dataset.id;       break;
+        case 'name':     av = a.dataset.name;       bv = b.dataset.name;      break;
+        case 'mode':     av = +a.dataset.mode;      bv = +b.dataset.mode;     break;
+        case 'status':   av = a.dataset.status;     bv = b.dataset.status;    break;
+        case 'created':  av = a.dataset.created;    bv = b.dataset.created;   break;
+        case 'duration': av = _durationSecs(a);     bv = _durationSecs(b);    break;
+        default:         return 0;
+      }
+      if (av < bv) return -1 * _sortDir;
+      if (av > bv) return  1 * _sortDir;
+      return 0;
+    });
+    rows.forEach(function(r) { tbody.appendChild(r); });
+  }
+
+  // ── Durée ─────────────────────────────────────────────────────────────────
+  function _parseDate(s) {
+    if (!s) return null;
+    return new Date(s.replace(' ', 'T') + (s.includes('T') ? '' : 'Z'));
+  }
+
+  function _fmtSecs(secs) {
+    if (secs < 0) secs = 0;
+    if (secs < 60) return secs + 's';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+    return Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm';
+  }
+
+  function _durationSecs(row) {
+    var s = _parseDate(row.dataset.started), f = _parseDate(row.dataset.finished);
+    if (!s) return -1;
+    var end = f || new Date();
+    return Math.floor((end - s) / 1000);
+  }
+
+  function _updateDurations() {
+    var now = new Date();
+    document.querySelectorAll('.job-row').forEach(function(row) {
+      var cell   = row.querySelector('.duration-cell');
+      var status = row.dataset.status;
+      var s      = _parseDate(row.dataset.started);
+      var f      = _parseDate(row.dataset.finished);
+      if (!cell) return;
+      if (!s) { cell.textContent = status === 'pending' ? 'en attente' : '—'; return; }
+      var end = f || now;
+      var secs = Math.floor((end - s) / 1000);
+      cell.textContent = _fmtSecs(secs);
+      if (!f && status === 'running') cell.style.color = '#00b4d8';
+    });
+  }
+
+  _updateDurations();
+  setInterval(_updateDurations, 1000);
+
+  // ── Auto-refresh si des jobs tournent ─────────────────────────────────────
+  var _hasRunning = document.querySelectorAll('.job-row[data-status="running"]').length > 0;
+  if (_hasRunning) {
+    setTimeout(function() { location.reload(); }, 30000);
+  }
+
+  // Init tri par défaut (ID desc)
+  document.getElementById('th-id') && document.getElementById('th-id').classList.add('sort-desc');
 </script>
 
 {% endblock %}

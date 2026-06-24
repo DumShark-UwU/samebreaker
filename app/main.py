@@ -9,9 +9,10 @@ from typing import Optional
 
 from werkzeug.utils import secure_filename
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, flash, Response, stream_with_context, jsonify)
+                   url_for, flash, Response, stream_with_context, jsonify, current_app)
 from flask_login import login_required, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
+import pyotp
 
 from .db import db_conn
 from .hashcat_utils import (hashcat_available, get_devices, get_wordlists,
@@ -461,4 +462,65 @@ def profile():
             current_user.must_change_password = False
             flash("Mot de passe mis à jour.", "success")
 
-    return render_template("main/profile.html")
+    # Données 2FA pour le template
+    with db_conn() as conn:
+        row2fa = conn.execute(
+            "SELECT totp_secret FROM users WHERE id=?", (current_user.id,)
+        ).fetchone()
+    has_2fa     = bool(row2fa and row2fa["totp_secret"])
+    require_2fa = current_app.config.get("REQUIRE_2FA", False)
+
+    # Générer QR si demandé via ?setup=1 ou si déjà en cours de setup
+    totp_uri    = None
+    totp_secret = None
+    show_setup  = request.args.get("setup") == "1"
+    if show_setup:
+        from flask import session as _session
+        totp_secret = _session.get("_profile_2fa_secret") or pyotp.random_base32()
+        _session["_profile_2fa_secret"] = totp_secret
+        totp_uri = pyotp.TOTP(totp_secret).provisioning_uri(
+            name=current_user.username, issuer_name="SameBreaker"
+        )
+
+    return render_template(
+        "main/profile.html",
+        has_2fa=has_2fa,
+        require_2fa=require_2fa,
+        totp_uri=totp_uri,
+        totp_secret=totp_secret,
+        show_setup=show_setup,
+    )
+
+
+@bp.route("/profile/2fa/setup", methods=["POST"])
+@login_required
+def profile_2fa_setup():
+    from flask import session as _session
+    secret = _session.get("_profile_2fa_secret", "")
+    code   = request.form.get("code", "").strip().replace(" ", "")
+    if not secret:
+        flash("Session expirée. Recommencez la configuration.", "error")
+        return redirect(url_for("main.profile"))
+    if pyotp.TOTP(secret).verify(code, valid_window=1):
+        with db_conn() as conn:
+            conn.execute("UPDATE users SET totp_secret=? WHERE id=?", (secret, current_user.id))
+            conn.commit()
+        _session.pop("_profile_2fa_secret", None)
+        flash("2FA activé avec succès !", "success")
+    else:
+        flash("Code invalide — vérifiez l'heure de votre appareil.", "error")
+        return redirect(url_for("main.profile") + "?setup=1")
+    return redirect(url_for("main.profile"))
+
+
+@bp.route("/profile/2fa/disable", methods=["POST"])
+@login_required
+def profile_2fa_disable():
+    if current_app.config.get("REQUIRE_2FA"):
+        flash("Le 2FA est obligatoire sur cette instance.", "error")
+        return redirect(url_for("main.profile"))
+    with db_conn() as conn:
+        conn.execute("UPDATE users SET totp_secret=NULL WHERE id=?", (current_user.id,))
+        conn.commit()
+    flash("2FA désactivé.", "success")
+    return redirect(url_for("main.profile"))

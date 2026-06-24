@@ -58,7 +58,10 @@
       <div id="hash-paste-zone">
         <textarea id="hash_content" name="hash_content" rows="5"
                   class="form-input font-mono resize-none"
-                  placeholder="Un hash par ligne&#10;5f4dcc3b5aa765d61d8327deb882cf99&#10;..."></textarea>
+                  placeholder="Un hash par ligne&#10;5f4dcc3b5aa765d61d8327deb882cf99&#10;..."
+                  oninput="updateHashCount()"></textarea>
+        <div id="hash-count-badge" class="hidden mt-1 text-xs font-mono"
+             style="color:#00b4d8;"></div>
       </div>
       <div id="hash-file-zone" class="hidden">
         <label class="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-lg border-2 border-dashed p-6 transition-all"
@@ -424,11 +427,23 @@
     }
   }
 
+  // ── Compteur de hash en temps réel ───────────────────────────────────────
+  function updateHashCount() {
+    var ta    = document.getElementById('hash_content');
+    var badge = document.getElementById('hash-count-badge');
+    if (!ta || !badge) return;
+    var lines = ta.value.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+    if (lines.length === 0) { badge.classList.add('hidden'); return; }
+    badge.classList.remove('hidden');
+    badge.textContent = lines.length + ' hash' + (lines.length > 1 ? 'es' : '') + ' détecté' + (lines.length > 1 ? 's' : '');
+  }
+
   // ── Auto-détection au collé (debounce 500ms) ──────────────────────────────
   var _detectTimer = null;
   document.getElementById('hash_content').addEventListener('paste', function() {
     clearTimeout(_detectTimer);
     _detectTimer = setTimeout(function() {
+      updateHashCount();
       var h = document.getElementById('hash_content').value.trim().split('\n')[0].trim();
       if (h) detectHash();
     }, 500);
