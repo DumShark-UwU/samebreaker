@@ -69,7 +69,7 @@ def get_devices() -> list[dict]:
                 current["type"] = m.group(1).strip()
         if current:
             devices.append(current)
-        return devices
+        return [d for d in devices if d.get("type", "").upper() != "CPU"]
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
 
