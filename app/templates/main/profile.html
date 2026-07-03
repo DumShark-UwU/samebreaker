@@ -72,6 +72,92 @@
     </button>
   </form>
 
+  <!-- Section Webhooks -->
+  <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div class="text-xs text-ink-muted uppercase tracking-wider mb-1">Notifications Webhook</div>
+
+    {% if webhooks %}
+    <div class="flex flex-col gap-2">
+      {% for wh in webhooks %}
+      {% set wh_events = wh.events.split(",") if wh.events else [] %}
+      <div class="flex items-center gap-3 p-3 rounded-lg" style="background:#0d2240; border:1px solid #1a3a5c;">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-0.5">
+            <span class="text-sm font-medium text-ink">{{ wh.label or "Sans nom" }}</span>
+            {% if "job_done" in wh_events %}
+            <span class="text-xs px-1.5 py-0.5 rounded" style="background:#0a1e35; color:#00b4d8; border:1px solid #1a3a5c;">job terminé</span>
+            {% endif %}
+            {% if "password_found" in wh_events %}
+            <span class="text-xs px-1.5 py-0.5 rounded" style="background:#0a1e35; color:#00ff88; border:1px solid #1a3a5c;">crack</span>
+            {% endif %}
+          </div>
+          <div class="text-xs font-mono truncate" style="color:#3a6a8a;">{{ wh.url }}</div>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <form method="POST" action="{{ url_for('main.profile_webhook_test', wh_id=wh.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="text-xs px-2.5 py-1.5 rounded-lg border transition-all"
+                    style="border-color:#1a3a5c; color:#5a8fa8; background:transparent;" title="Tester">
+              Test
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('main.profile_webhook_delete', wh_id=wh.id) }}"
+                onsubmit="return confirm('Supprimer ce webhook ?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button type="submit" class="text-xs px-2.5 py-1.5 rounded-lg transition-all"
+                    style="background:#2a0d0d; color:#e05252; border:1px solid #3a1515;">
+              ✕
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm" style="color:#3a6a8a;">Aucun webhook configuré.</p>
+    {% endif %}
+
+    <!-- Formulaire ajout -->
+    <details class="group">
+      <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2"
+               style="color:#00b4d8;">
+        <span class="transition-transform group-open:rotate-90">▶</span>
+        Ajouter un webhook
+      </summary>
+      <form method="POST" action="{{ url_for('main.profile_webhook_add') }}"
+            class="flex flex-col gap-3 mt-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <div>
+          <label class="form-label">Nom <span style="color:#3a6a8a;">(ex: Discord CTF, Slack team)</span></label>
+          <input name="label" type="text" class="form-input" placeholder="Mon webhook Discord" maxlength="64" />
+        </div>
+        <div>
+          <label class="form-label">URL</label>
+          <input name="url" type="url" class="form-input" required
+                 placeholder="https://discord.com/api/webhooks/..." />
+          <p class="text-xs mt-1" style="color:#3a6a8a;">Compatible Discord, Slack, n8n, ou tout endpoint HTTP POST JSON.</p>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label class="form-label">Événements</label>
+          <label class="flex items-center gap-3 cursor-pointer select-none">
+            <input type="checkbox" name="events" value="job_done" checked
+                   class="w-4 h-4 rounded accent-accent" />
+            <span class="text-sm text-ink">Job terminé <span class="text-ink-muted">(succès ou échec)</span></span>
+          </label>
+          <label class="flex items-center gap-3 cursor-pointer select-none">
+            <input type="checkbox" name="events" value="password_found" checked
+                   class="w-4 h-4 rounded accent-accent" />
+            <span class="text-sm text-ink">Mot de passe trouvé <span class="text-ink-muted">(quasi temps réel)</span></span>
+          </label>
+        </div>
+        <button type="submit" class="py-2.5 rounded-xl font-bold text-sm transition-all"
+                style="background:#00b4d8; color:#050b14;">
+          Ajouter
+        </button>
+      </form>
+    </details>
+  </div>
+
   <!-- Section 2FA -->
   <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
     <div class="text-xs text-ink-muted uppercase tracking-wider mb-1">Authentification à deux facteurs (2FA)</div>

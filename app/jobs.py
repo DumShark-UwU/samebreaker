@@ -8,6 +8,7 @@ from typing import Optional
 
 from .db import db_conn, _JOBS_DIR
 from .hashcat_utils import build_command, HASHCAT_BIN, HASHCAT_FORCE
+from .notify import send_webhook, job_done_payload, password_found_payload
 
 # ── Statuts ───────────────────────────────────────────────────────────────────
 STATUS_PENDING   = "pending"
@@ -17,7 +18,6 @@ STATUS_FAILED    = "failed"
 STATUS_STOPPED   = "stopped"
 
 TERMINAL_STATUSES = {STATUS_COMPLETED, STATUS_FAILED, STATUS_STOPPED}
-_TERMINAL_STATUSES = TERMINAL_STATUSES  # alias interne
 
 # Hashcat retourne 0 (succès) ou 1 (aucun hash cracké).
 _HASHCAT_OK_CODES = {0, 1}
@@ -115,15 +115,45 @@ def start_job(job_id: int) -> bool:
     job_dict = dict(row)
     job_dict.setdefault("workload", 2)
     job_dict["restore_file"] = _restore_path(job_id)
-    cmd      = build_command(job_dict)
-    log_file = row["log_file"]
+    cmd       = build_command(job_dict)
+    log_file  = row["log_file"]
     hash_file = row["hash_file"]
+    pot_file  = row["pot_file"]
+    job_name  = row["name"]
+    created_by = row["created_by"]
+
+    # Charger tous les webhooks de l'utilisateur une seule fois avant le thread
+    user_webhooks: list[dict] = []
+    if created_by:
+        with db_conn() as conn:
+            rows = conn.execute(
+                "SELECT url, events FROM webhooks WHERE user_id=?", (created_by,)
+            ).fetchall()
+        user_webhooks = [
+            {"url": r["url"], "events": {e.strip() for e in (r["events"] or "").split(",") if e.strip()}}
+            for r in rows if r["url"]
+        ]
+
+    def _poll_pot(pot_seen: set[str]) -> list[str]:
+        """Retourne les nouvelles lignes du .pot depuis la dernière vérification."""
+        if not pot_file or not os.path.exists(pot_file):
+            return []
+        try:
+            with open(pot_file) as f:
+                lines = [l.strip() for l in f if l.strip()]
+        except OSError:
+            return []
+        new = [l for l in lines if l not in pot_seen]
+        pot_seen.update(new)
+        return new
 
     def _run() -> None:
         with open(log_file, "w") as lf:
             lf.write(f"[SameBreaker] Starting: {' '.join(cmd)}\n\n")
             lf.flush()
             status = STATUS_FAILED
+            pot_seen: set[str] = set()
+            line_count = 0
             try:
                 proc = subprocess.Popen(
                     cmd,
@@ -145,9 +175,25 @@ def start_job(job_id: int) -> bool:
                 for line in proc.stdout:
                     lf.write(line)
                     lf.flush()
+                    line_count += 1
+                    if line_count % 100 == 0:
+                        new = _poll_pot(pot_seen)
+                        if new:
+                            payload = password_found_payload(job_name, job_id, new)
+                            for wh in user_webhooks:
+                                if "password_found" in wh["events"]:
+                                    send_webhook(wh["url"], payload)
 
                 proc.wait()
                 status = STATUS_COMPLETED if proc.returncode in _HASHCAT_OK_CODES else STATUS_FAILED
+
+                # Vérification finale du pot avant de clore
+                new = _poll_pot(pot_seen)
+                if new:
+                    payload = password_found_payload(job_name, job_id, new)
+                    for wh in user_webhooks:
+                        if "password_found" in wh["events"]:
+                            send_webhook(wh["url"], payload)
 
             except FileNotFoundError:
                 lf.write("[SameBreaker] ERREUR : hashcat introuvable dans le PATH.\n")
@@ -158,11 +204,19 @@ def start_job(job_id: int) -> bool:
                     _procs.pop(job_id, None)
 
         with db_conn() as conn:
-            conn.execute(
-                "UPDATE jobs SET status=?, finished_at=? WHERE id=?",
-                (status, datetime.utcnow(), job_id),
-            )
-            conn.commit()
+            current = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if not current or current["status"] != STATUS_STOPPED:
+                conn.execute(
+                    "UPDATE jobs SET status=?, finished_at=? WHERE id=?",
+                    (status, datetime.utcnow(), job_id),
+                )
+                conn.commit()
+
+        found_count = len(pot_seen)
+        done_payload = job_done_payload(job_name, job_id, status, found_count)
+        for wh in user_webhooks:
+            if "job_done" in wh["events"]:
+                send_webhook(wh["url"], done_payload)
 
         if hash_file and os.path.exists(hash_file):
             try:
@@ -188,16 +242,44 @@ def resume_job(job_id: int) -> bool:
     if not row:
         return False
 
-    log_file = row["log_file"]
+    log_file   = row["log_file"]
+    pot_file   = row["pot_file"]
+    job_name   = row["name"]
+    created_by = row["created_by"]
     cmd = [HASHCAT_BIN, "--restore", "--restore-file-path", restore_file]
     if HASHCAT_FORCE:
         cmd.append("--force")
+
+    user_webhooks: list[dict] = []
+    if created_by:
+        with db_conn() as conn:
+            wh_rows = conn.execute(
+                "SELECT url, events FROM webhooks WHERE user_id=?", (created_by,)
+            ).fetchall()
+        user_webhooks = [
+            {"url": r["url"], "events": {e.strip() for e in (r["events"] or "").split(",") if e.strip()}}
+            for r in wh_rows if r["url"]
+        ]
+
+    def _poll_pot(pot_seen: set[str]) -> list[str]:
+        if not pot_file or not os.path.exists(pot_file):
+            return []
+        try:
+            with open(pot_file) as f:
+                lines = [l.strip() for l in f if l.strip()]
+        except OSError:
+            return []
+        new = [l for l in lines if l not in pot_seen]
+        pot_seen.update(new)
+        return new
 
     def _run() -> None:
         with open(log_file, "a") as lf:
             lf.write(f"\n[SameBreaker] Reprise : {' '.join(cmd)}\n\n")
             lf.flush()
             status = STATUS_FAILED
+            pot_seen: set[str] = set()
+            line_count = 0
             try:
                 proc = subprocess.Popen(
                     cmd,
@@ -217,8 +299,22 @@ def resume_job(job_id: int) -> bool:
                 for line in proc.stdout:
                     lf.write(line)
                     lf.flush()
+                    line_count += 1
+                    if line_count % 100 == 0:
+                        new = _poll_pot(pot_seen)
+                        if new:
+                            payload = password_found_payload(job_name, job_id, new)
+                            for wh in user_webhooks:
+                                if "password_found" in wh["events"]:
+                                    send_webhook(wh["url"], payload)
                 proc.wait()
                 status = STATUS_COMPLETED if proc.returncode in _HASHCAT_OK_CODES else STATUS_FAILED
+                new = _poll_pot(pot_seen)
+                if new:
+                    payload = password_found_payload(job_name, job_id, new)
+                    for wh in user_webhooks:
+                        if "password_found" in wh["events"]:
+                            send_webhook(wh["url"], payload)
             except FileNotFoundError:
                 lf.write("[SameBreaker] ERREUR : hashcat introuvable.\n")
             except OSError as exc:
@@ -228,11 +324,19 @@ def resume_job(job_id: int) -> bool:
                     _procs.pop(job_id, None)
 
         with db_conn() as conn:
-            conn.execute(
-                "UPDATE jobs SET status=?, finished_at=? WHERE id=?",
-                (status, datetime.utcnow(), job_id),
-            )
-            conn.commit()
+            current = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if not current or current["status"] != STATUS_STOPPED:
+                conn.execute(
+                    "UPDATE jobs SET status=?, finished_at=? WHERE id=?",
+                    (status, datetime.utcnow(), job_id),
+                )
+                conn.commit()
+
+        found_count = len(pot_seen)
+        done_payload = job_done_payload(job_name, job_id, status, found_count)
+        for wh in user_webhooks:
+            if "job_done" in wh["events"]:
+                send_webhook(wh["url"], done_payload)
 
     threading.Thread(target=_run, daemon=True).start()
     return True
@@ -256,16 +360,30 @@ def get_job(job_id: int):
         return conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
 
 
-def list_jobs(user_id: Optional[int] = None) -> list:
+def list_jobs(user_id: Optional[int] = None, include_hidden: bool = False) -> list:
     with db_conn() as conn:
+        hidden_clause = "" if include_hidden else " AND hidden=0"
         if user_id is None:
             return conn.execute(
-                "SELECT * FROM jobs ORDER BY created_at DESC"
+                f"SELECT * FROM jobs WHERE 1=1{hidden_clause} ORDER BY created_at DESC"
             ).fetchall()
         return conn.execute(
-            "SELECT * FROM jobs WHERE created_by=? ORDER BY created_at DESC",
+            f"SELECT * FROM jobs WHERE created_by=?{hidden_clause} ORDER BY created_at DESC",
             (user_id,),
         ).fetchall()
+
+
+def hide_job(job_id: int, hidden_by: int) -> bool:
+    with db_conn() as conn:
+        row = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not row or row["status"] not in TERMINAL_STATUSES:
+            return False
+        conn.execute(
+            "UPDATE jobs SET hidden=1, hidden_at=CURRENT_TIMESTAMP, hidden_by=? WHERE id=?",
+            (hidden_by, job_id),
+        )
+        conn.commit()
+    return True
 
 
 def get_results(job) -> list[str]:

@@ -21,12 +21,6 @@ def db_conn() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     os.makedirs(_JOBS_DIR, exist_ok=True)
@@ -44,6 +38,15 @@ def init_db() -> None:
                 totp_secret          TEXT,
                 must_change_password INTEGER NOT NULL DEFAULT 0,
                 created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS webhooks (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                label      TEXT    NOT NULL DEFAULT '',
+                url        TEXT    NOT NULL,
+                events     TEXT    NOT NULL DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS jobs (
@@ -82,6 +85,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         ("users", "totp_secret",          "TEXT"),
         ("users", "must_change_password", "INTEGER NOT NULL DEFAULT 0"),
         ("jobs",  "workload",             "INTEGER DEFAULT 2"),
+        ("jobs",  "hidden",              "INTEGER NOT NULL DEFAULT 0"),
+        ("jobs",  "hidden_at",           "DATETIME"),
+        ("jobs",  "hidden_by",           "INTEGER"),
     ]
     for table, col, definition in migrations:
         try:

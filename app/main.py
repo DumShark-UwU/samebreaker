@@ -18,6 +18,7 @@ from .db import db_conn
 from .hashcat_utils import (hashcat_available, get_devices, get_wordlists,
                              detect_hash, ATTACK_MODES, WORDLIST_DIRS, HASHCAT_BIN,
                              HASHCAT_FORCE)
+from .notify import send_webhook, test_payload
 from . import jobs as job_mgr
 from .jobs import TERMINAL_STATUSES
 from .admin import WORKLOAD_LABELS
@@ -186,7 +187,9 @@ def new_attack():
         wl_upload  = request.files.get("wordlist_file_upload")
         if wl_upload and wl_upload.filename:
             filename   = secure_filename(wl_upload.filename)
-            save_path  = os.path.join("instance/wordlists", filename)
+            wl_dir     = os.path.join(current_app.instance_path, "wordlists")
+            os.makedirs(wl_dir, exist_ok=True)
+            save_path  = os.path.join(wl_dir, filename)
             wl_upload.save(save_path)
             wordlist   = save_path
         if wordlist and not _is_safe_path(wordlist, _WORDLIST_ALLOWED):
@@ -272,6 +275,21 @@ def stop_attack(job_id: int):
     job_mgr.stop_job(job_id)
     flash(f"Job #{job_id} arrêté.", "success")
     return redirect(url_for("main.job_detail", job_id=job_id))
+
+
+@bp.route("/attack/<int:job_id>/hide", methods=["POST"])
+@login_required
+def hide_job(job_id: int):
+    job = job_mgr.get_job(job_id)
+    if not job or not _can_access_job(job):
+        flash("Job introuvable.", "error")
+        return redirect(url_for("main.index"))
+    if job["status"] not in TERMINAL_STATUSES:
+        flash("Seuls les jobs terminés peuvent être masqués.", "error")
+        return redirect(url_for("main.index"))
+    job_mgr.hide_job(job_id, current_user.id)
+    flash(f"Job #{job_id} masqué du dashboard — conservé dans l'audit admin.", "success")
+    return redirect(url_for("main.index"))
 
 
 @bp.route("/attack/<int:job_id>/resume", methods=["POST"])
@@ -464,11 +482,16 @@ def profile():
 
     # Données 2FA pour le template
     with db_conn() as conn:
-        row2fa = conn.execute(
-            "SELECT totp_secret FROM users WHERE id=?", (current_user.id,)
+        urow = conn.execute(
+            "SELECT totp_secret FROM users WHERE id=?",
+            (current_user.id,)
         ).fetchone()
-    has_2fa     = bool(row2fa and row2fa["totp_secret"])
-    require_2fa = current_app.config.get("REQUIRE_2FA", False)
+    has_2fa        = bool(urow and urow["totp_secret"])
+    require_2fa    = current_app.config.get("REQUIRE_2FA", False)
+    with db_conn() as conn:
+        webhooks = conn.execute(
+            "SELECT * FROM webhooks WHERE user_id=? ORDER BY created_at", (current_user.id,)
+        ).fetchall()
 
     # Générer QR si demandé via ?setup=1 ou si déjà en cours de setup
     totp_uri    = None
@@ -489,7 +512,54 @@ def profile():
         totp_uri=totp_uri,
         totp_secret=totp_secret,
         show_setup=show_setup,
+        webhooks=webhooks,
     )
+
+
+@bp.route("/profile/webhook/add", methods=["POST"])
+@login_required
+def profile_webhook_add():
+    label  = request.form.get("label", "").strip()[:64]
+    url    = request.form.get("url", "").strip()
+    events = [e for e in request.form.getlist("events") if e in ("job_done", "password_found")]
+    if not url:
+        flash("URL manquante.", "error")
+        return redirect(url_for("main.profile"))
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO webhooks (user_id, label, url, events) VALUES (?,?,?,?)",
+            (current_user.id, label, url, ",".join(events)),
+        )
+        conn.commit()
+    flash("Webhook ajouté.", "success")
+    return redirect(url_for("main.profile"))
+
+
+@bp.route("/profile/webhook/<int:wh_id>/delete", methods=["POST"])
+@login_required
+def profile_webhook_delete(wh_id: int):
+    with db_conn() as conn:
+        conn.execute(
+            "DELETE FROM webhooks WHERE id=? AND user_id=?", (wh_id, current_user.id)
+        )
+        conn.commit()
+    flash("Webhook supprimé.", "success")
+    return redirect(url_for("main.profile"))
+
+
+@bp.route("/profile/webhook/<int:wh_id>/test", methods=["POST"])
+@login_required
+def profile_webhook_test(wh_id: int):
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT url FROM webhooks WHERE id=? AND user_id=?", (wh_id, current_user.id)
+        ).fetchone()
+    if not row:
+        flash("Webhook introuvable.", "error")
+        return redirect(url_for("main.profile"))
+    ok = send_webhook(row["url"], test_payload(current_user.username))
+    flash("Test envoyé ✓" if ok else "Échec de l'envoi.", "success" if ok else "error")
+    return redirect(url_for("main.profile"))
 
 
 @bp.route("/profile/2fa/setup", methods=["POST"])

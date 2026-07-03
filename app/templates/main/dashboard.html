@@ -93,8 +93,19 @@
         <td class="px-4 py-3 text-ink-muted text-xs">{{ job.created_at[:16] }}</td>
         <td class="px-4 py-3 text-ink-muted text-xs duration-cell">—</td>
         <td class="px-4 py-3">
-          <a href="{{ url_for('main.job_detail', job_id=job.id) }}"
-             class="btn btn-secondary btn-xs">Voir →</a>
+          <div class="flex items-center gap-2">
+            <a href="{{ url_for('main.job_detail', job_id=job.id) }}"
+               class="btn btn-secondary btn-xs">Voir →</a>
+            {% if job.status in ('completed', 'failed', 'stopped') %}
+            <form method="POST" action="{{ url_for('main.hide_job', job_id=job.id) }}"
+                  onsubmit="return confirm('Masquer le job #{{ job.id }} du dashboard ?\nIl restera visible dans l\'audit admin.')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <button type="submit" class="btn btn-xs"
+                      style="background:#1a1030; border:1px solid #3a1a50; color:#9a7ab8;"
+                      title="Masquer du dashboard">✕</button>
+            </form>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% else %}

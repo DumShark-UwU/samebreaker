@@ -13,6 +13,7 @@
     <button onclick="auditFilter('failed')"    class="btn btn-secondary btn-xs"  id="af-failed">Échoués</button>
     <button onclick="auditFilter('stopped')"   class="btn btn-secondary btn-xs"  id="af-stopped">Stoppés</button>
     <button onclick="auditFilter('pending')"   class="btn btn-secondary btn-xs"  id="af-pending">En attente</button>
+    <button onclick="auditFilter('hidden')"    class="btn btn-secondary btn-xs"  id="af-hidden" style="border-color:#3a1a50; color:#9a7ab8;">Masqués</button>
   </div>
 </div>
 
@@ -34,7 +35,8 @@
       {% for job in jobs %}
       <tr class="border-t hover:bg-card/30 transition-colors audit-row"
           data-status="{{ job.status }}"
-          style="border-color:#0d2240;">
+          data-hidden="{{ '1' if job.hidden else '0' }}"
+          style="border-color:#0d2240; {% if job.hidden %}opacity:0.55;{% endif %}">
         <td class="px-4 py-3 text-ink-muted">{{ job.id }}</td>
         <td class="px-4 py-3">
           <span class="text-xs px-2 py-0.5 rounded font-mono"
@@ -52,6 +54,9 @@
         </td>
         <td class="px-4 py-3">
           <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
+          {% if job.hidden %}
+          <span class="text-xs ml-1" style="color:#9a7ab8; font-style:italic;">masqué</span>
+          {% endif %}
         </td>
         <td class="px-4 py-3 text-ink-muted text-xs">{{ job.created_at[:16] }}</td>
         <td class="px-4 py-3">
@@ -70,13 +75,19 @@
 
 <script>
   function auditFilter(status) {
-    ['all','running','completed','failed','stopped','pending'].forEach(function(s) {
+    ['all','running','completed','failed','stopped','pending','hidden'].forEach(function(s) {
       var btn = document.getElementById('af-' + s);
-      if (btn) btn.className = s === status ? 'btn btn-primary btn-xs' : 'btn btn-secondary btn-xs';
+      if (!btn) return;
+      btn.className = s === status ? 'btn btn-primary btn-xs' : 'btn btn-secondary btn-xs';
+      if (s === 'hidden' && s !== status) btn.style.cssText = 'border-color:#3a1a50; color:#9a7ab8;';
+      if (s === 'hidden' && s === status) btn.style.cssText = '';
     });
     var visible = 0;
     document.querySelectorAll('.audit-row').forEach(function(row) {
-      var show = status === 'all' || row.dataset.status === status;
+      var show;
+      if (status === 'all')    show = true;
+      else if (status === 'hidden') show = row.dataset.hidden === '1';
+      else show = row.dataset.status === status;
       row.style.display = show ? '' : 'none';
       if (show) visible++;
     });
@@ -85,7 +96,7 @@
       if (!nfr) {
         var tr = document.createElement('tr');
         tr.id = 'audit-no-row';
-        tr.innerHTML = '<td colspan="8" class="px-4 py-8 text-center text-ink-muted text-sm">Aucun job avec ce statut.</td>';
+        tr.innerHTML = '<td colspan="8" class="px-4 py-8 text-center text-ink-muted text-sm">Aucun job avec ce filtre.</td>';
         document.getElementById('audit-tbody').appendChild(tr);
       } else {
         nfr.style.display = '';

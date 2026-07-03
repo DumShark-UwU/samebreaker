@@ -7,9 +7,9 @@ import sqlite3
 from datetime import timedelta
 from typing import Any
 
-from flask import Flask, Response, session
+from flask import Flask, Response, render_template, session
 from flask_login import LoginManager, current_user
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 
 from .db import init_db, seed_default_admin, reset_stale_jobs
 from .models import User
@@ -90,6 +90,55 @@ def create_app() -> Flask:
         resp.headers.setdefault("Permissions-Policy",        "geolocation=(), microphone=(), camera=()")
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return resp
+
+    # ── Pages d'erreur ────────────────────────────────────────────────────────
+    def _err(code: int, icon: str, title: str, message: str, detail: str = "") -> tuple:
+        return render_template(
+            "errors/error.html",
+            code=code, icon=icon, title=title, message=message, detail=detail
+        ), code
+
+    @app.errorhandler(CSRFError)
+    def err_csrf(e):
+        return _err(400, "", "Jeton de sécurité invalide",
+                    "Le formulaire a expiré ou le jeton CSRF est manquant. "
+                    "Rechargez la page et réessayez.",
+                    str(e.description))
+
+    @app.errorhandler(400)
+    def err_400(e):
+        return _err(400, "", "Requête invalide",
+                    "La requête envoyée au serveur est malformée ou incomplète.",
+                    str(getattr(e, 'description', '')))
+
+    @app.errorhandler(403)
+    def err_403(e):
+        return _err(403, "", "Accès refusé",
+                    "Vous n'avez pas les droits nécessaires pour accéder à cette ressource.")
+
+    @app.errorhandler(404)
+    def err_404(e):
+        return _err(404, "", "Page introuvable",
+                    "Cette page n'existe pas ou a été déplacée.")
+
+    @app.errorhandler(413)
+    def err_413(e):
+        return _err(413, "", "Fichier trop volumineux",
+                    "Le fichier envoyé dépasse la taille maximale autorisée. "
+                    "Vérifiez la limite dans Configuration → max_upload_mb.")
+
+    @app.errorhandler(429)
+    def err_429(e):
+        return _err(429, "", "Trop de requêtes",
+                    "Vous avez dépassé la limite de requêtes autorisées. "
+                    "Patientez quelques secondes avant de réessayer.")
+
+    @app.errorhandler(500)
+    def err_500(e):
+        app.logger.exception("Erreur 500 : %s", e)
+        return _err(500, "", "Erreur interne du serveur",
+                    "Une erreur inattendue s'est produite. L'incident a été journalisé.",
+                    str(getattr(e, 'original_exception', e)))
 
     @app.context_processor
     def _inject_globals() -> dict[str, Any]:
