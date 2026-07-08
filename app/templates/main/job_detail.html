@@ -249,6 +249,8 @@
     }
   }
 
+  var _LOG_MAX = 200;
+
   function appendLine(raw) {
     parseProgress(raw);
     var line = document.createElement('div');
@@ -259,6 +261,10 @@
     else if (raw.match(/Progress|ETA|Speed|Status/i))line.style.color = '#5a8fa8';
     line.textContent = raw;
     logEl.appendChild(line);
+    // Cap DOM to last _LOG_MAX lines to prevent RAM bloat on long sessions
+    while (logEl.childElementCount > _LOG_MAX) {
+      logEl.removeChild(logEl.firstChild);
+    }
     logEl.scrollTop = logEl.scrollHeight;
   }
 

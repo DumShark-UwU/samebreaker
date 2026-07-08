@@ -41,12 +41,13 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS webhooks (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                label      TEXT    NOT NULL DEFAULT '',
-                url        TEXT    NOT NULL,
-                events     TEXT    NOT NULL DEFAULT '',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                label        TEXT    NOT NULL DEFAULT '',
+                url          TEXT    NOT NULL,
+                events       TEXT    NOT NULL DEFAULT '',
+                webhook_type TEXT    NOT NULL DEFAULT 'auto',
+                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS jobs (
@@ -85,9 +86,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         ("users", "totp_secret",          "TEXT"),
         ("users", "must_change_password", "INTEGER NOT NULL DEFAULT 0"),
         ("jobs",  "workload",             "INTEGER DEFAULT 2"),
-        ("jobs",  "hidden",              "INTEGER NOT NULL DEFAULT 0"),
-        ("jobs",  "hidden_at",           "DATETIME"),
-        ("jobs",  "hidden_by",           "INTEGER"),
+        ("jobs",     "hidden",        "INTEGER NOT NULL DEFAULT 0"),
+        ("jobs",     "hidden_at",     "DATETIME"),
+        ("jobs",     "hidden_by",     "INTEGER"),
+        ("webhooks", "webhook_type",  "TEXT NOT NULL DEFAULT 'auto'"),
     ]
     for table, col, definition in migrations:
         try:

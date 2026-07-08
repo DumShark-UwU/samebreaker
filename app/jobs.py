@@ -127,10 +127,14 @@ def start_job(job_id: int) -> bool:
     if created_by:
         with db_conn() as conn:
             rows = conn.execute(
-                "SELECT url, events FROM webhooks WHERE user_id=?", (created_by,)
+                "SELECT url, events, webhook_type FROM webhooks WHERE user_id=?", (created_by,)
             ).fetchall()
         user_webhooks = [
-            {"url": r["url"], "events": {e.strip() for e in (r["events"] or "").split(",") if e.strip()}}
+            {
+                "url":          r["url"],
+                "events":       {e.strip() for e in (r["events"] or "").split(",") if e.strip()},
+                "webhook_type": r["webhook_type"] or "auto",
+            }
             for r in rows if r["url"]
         ]
 
@@ -182,7 +186,7 @@ def start_job(job_id: int) -> bool:
                             payload = password_found_payload(job_name, job_id, new)
                             for wh in user_webhooks:
                                 if "password_found" in wh["events"]:
-                                    send_webhook(wh["url"], payload)
+                                    send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
 
                 proc.wait()
                 status = STATUS_COMPLETED if proc.returncode in _HASHCAT_OK_CODES else STATUS_FAILED
@@ -193,7 +197,7 @@ def start_job(job_id: int) -> bool:
                     payload = password_found_payload(job_name, job_id, new)
                     for wh in user_webhooks:
                         if "password_found" in wh["events"]:
-                            send_webhook(wh["url"], payload)
+                            send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
 
             except FileNotFoundError:
                 lf.write("[SameBreaker] ERREUR : hashcat introuvable dans le PATH.\n")
@@ -216,7 +220,7 @@ def start_job(job_id: int) -> bool:
         done_payload = job_done_payload(job_name, job_id, status, found_count)
         for wh in user_webhooks:
             if "job_done" in wh["events"]:
-                send_webhook(wh["url"], done_payload)
+                send_webhook(wh["url"], done_payload, wh.get("webhook_type", "auto"))
 
         if hash_file and os.path.exists(hash_file):
             try:
@@ -254,10 +258,14 @@ def resume_job(job_id: int) -> bool:
     if created_by:
         with db_conn() as conn:
             wh_rows = conn.execute(
-                "SELECT url, events FROM webhooks WHERE user_id=?", (created_by,)
+                "SELECT url, events, webhook_type FROM webhooks WHERE user_id=?", (created_by,)
             ).fetchall()
         user_webhooks = [
-            {"url": r["url"], "events": {e.strip() for e in (r["events"] or "").split(",") if e.strip()}}
+            {
+                "url":          r["url"],
+                "events":       {e.strip() for e in (r["events"] or "").split(",") if e.strip()},
+                "webhook_type": r["webhook_type"] or "auto",
+            }
             for r in wh_rows if r["url"]
         ]
 
@@ -306,7 +314,7 @@ def resume_job(job_id: int) -> bool:
                             payload = password_found_payload(job_name, job_id, new)
                             for wh in user_webhooks:
                                 if "password_found" in wh["events"]:
-                                    send_webhook(wh["url"], payload)
+                                    send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
                 proc.wait()
                 status = STATUS_COMPLETED if proc.returncode in _HASHCAT_OK_CODES else STATUS_FAILED
                 new = _poll_pot(pot_seen)
@@ -314,7 +322,7 @@ def resume_job(job_id: int) -> bool:
                     payload = password_found_payload(job_name, job_id, new)
                     for wh in user_webhooks:
                         if "password_found" in wh["events"]:
-                            send_webhook(wh["url"], payload)
+                            send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
             except FileNotFoundError:
                 lf.write("[SameBreaker] ERREUR : hashcat introuvable.\n")
             except OSError as exc:
@@ -336,7 +344,7 @@ def resume_job(job_id: int) -> bool:
         done_payload = job_done_payload(job_name, job_id, status, found_count)
         for wh in user_webhooks:
             if "job_done" in wh["events"]:
-                send_webhook(wh["url"], done_payload)
+                send_webhook(wh["url"], done_payload, wh.get("webhook_type", "auto"))
 
     threading.Thread(target=_run, daemon=True).start()
     return True

@@ -12,7 +12,7 @@ Interface web multi-utilisateurs pour hashcat — gestion de jobs de cassage de 
 - **Multi-utilisateurs** — rôles `admin` / `user`, accès par GPU assigné, workload profile par user
 - **Détection automatique de hash** — via `name_that_hash`, déclenchée au collé + bouton manuel, avec compteur de hash live
 - **Gestion GPU** — détection live des devices, GPU occupé grisé et non-sélectionnable
-- **5 modes d'attaque** — Dictionnaire, Combinateur, Brute-force/Mask, Hybride ×2
+- **5 modes d'attaque** — Dictionnaire, Combinateur, Brute-force/Mask, Hybride ×2, avec tooltips explicatifs au survol
 - **Streaming de logs en temps réel** — Server-Sent Events directement depuis le fichier log hashcat
 - **Barre de progression + ETA** — parsing live du statut hashcat (vitesse, avancement %, temps restant)
 - **Dashboard amélioré** — colonne Durée mise à jour chaque seconde, colonnes triables, auto-refresh toutes les 30 s si jobs actifs
@@ -284,9 +284,18 @@ gunicorn -w 1 -b 0.0.0.0:6660 "app:create_app()"
 
 ---
 
+## Documentation technique ![](img/Emote-gura6.png)
+
+Pour les détails d'architecture interne, le schéma de base de données, le cycle de vie des jobs, le parseur hashcat -I, le streaming SSE, la sécurité et les webhooks : **[TECHNICAL.md](TECHNICAL.md)**
+
+---
+
 ## Historique des versions ![](img/Emote-gura19.png)
 
 | Version | Changement principal |
 |---------|---------------------|
+| v1.2.2 | Tooltips CSS sur les boutons de mode d'attaque |
+| v1.2.1 | Fix détection GPU (device #8) ; smart scroll benchmark ; bouton "Copier tout" |
+| v1.2.0 | Fix race condition stop→failed ; webhooks sur reprise de job ; refactoring db.py ; fix upload wordlist |
 | v1.1.0 | Durée live dashboard, tri des colonnes, auto-refresh, barre de progression + ETA, copier résultats, notification navigateur, compteur de hash, 2FA profil, éditeur config admin |
 | v1.0.0 | Version initiale — UI Tailwind, multi-user, détection hash auto, streaming SSE, GPU busy, workload chips admin, audit sécu, filtres dashboard, relancer/reprendre job, badge sidebar, audit log admin, recovery crash, limite jobs simultanés, security headers |

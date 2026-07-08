@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -68,7 +69,7 @@ def _is_safe_path(path: str, allowed_dirs: list) -> bool:
     return False
 
 
-_RULES_DIRS      = ["/usr/share/hashcat/rules", "/opt/hashcat/rules", "rules"]
+_RULES_DIRS      = ["/usr/share/hashcat/rules", "/opt/hashcat/rules", "rules", "instance/rules"]
 _WORDLIST_ALLOWED = WORDLIST_DIRS
 
 
@@ -357,6 +358,59 @@ def benchmark():
     return render_template("main/benchmark.html", hashcat_ok=ok, hashcat_version=version)
 
 
+@bp.route("/api/sysinfo")
+@login_required
+def api_sysinfo():
+    info: dict = {}
+
+    # ── CPU (load average → approx %) ────────────────────────────────────────
+    try:
+        with open("/proc/loadavg") as f:
+            load1 = float(f.read().split()[0])
+        cpu_count = os.cpu_count() or 1
+        info["cpu_load1"] = round(load1, 2)
+        info["cpu_pct"]   = min(100, round(load1 / cpu_count * 100, 1))
+        info["cpu_count"] = cpu_count
+    except OSError:
+        info["cpu_load1"] = None
+        info["cpu_pct"]   = None
+        info["cpu_count"] = os.cpu_count()
+
+    # ── RAM (/proc/meminfo) ────────────────────────────────────────────────────
+    try:
+        mem: dict[str, int] = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, v = line.split(":", 1)
+                mem[k.strip()] = int(v.split()[0]) * 1024
+        total     = mem.get("MemTotal", 0)
+        available = mem.get("MemAvailable", 0)
+        used      = total - available
+        info["ram_total_gb"]  = round(total / 1e9, 1)
+        info["ram_used_gb"]   = round(used  / 1e9, 1)
+        info["ram_pct"]       = round(used / total * 100, 1) if total else 0
+    except OSError:
+        info["ram_total_gb"] = info["ram_used_gb"] = info["ram_pct"] = None
+
+    # ── Disk — racine + instance ──────────────────────────────────────────────
+    def _disk(path: str) -> dict:
+        try:
+            u = shutil.disk_usage(path)
+            return {
+                "total_gb": round(u.total / 1e9, 1),
+                "used_gb":  round(u.used  / 1e9, 1),
+                "free_gb":  round(u.free  / 1e9, 1),
+                "pct":      round(u.used / u.total * 100, 1) if u.total else 0,
+            }
+        except OSError:
+            return {}
+
+    info["disk_root"]     = _disk("/")
+    info["disk_instance"] = _disk(current_app.instance_path)
+
+    return jsonify(info)
+
+
 @bp.route("/api/benchmark/start", methods=["POST"])
 @login_required
 def benchmark_start():
@@ -519,16 +573,19 @@ def profile():
 @bp.route("/profile/webhook/add", methods=["POST"])
 @login_required
 def profile_webhook_add():
-    label  = request.form.get("label", "").strip()[:64]
-    url    = request.form.get("url", "").strip()
-    events = [e for e in request.form.getlist("events") if e in ("job_done", "password_found")]
+    label        = request.form.get("label", "").strip()[:64]
+    url          = request.form.get("url", "").strip()
+    webhook_type = request.form.get("webhook_type", "auto").strip()
+    events       = [e for e in request.form.getlist("events") if e in ("job_done", "password_found")]
     if not url:
         flash("URL manquante.", "error")
         return redirect(url_for("main.profile"))
+    if webhook_type not in ("auto", "discord", "slack", "teams", "ntfy", "signal", "generic"):
+        webhook_type = "auto"
     with db_conn() as conn:
         conn.execute(
-            "INSERT INTO webhooks (user_id, label, url, events) VALUES (?,?,?,?)",
-            (current_user.id, label, url, ",".join(events)),
+            "INSERT INTO webhooks (user_id, label, url, events, webhook_type) VALUES (?,?,?,?,?)",
+            (current_user.id, label, url, ",".join(events), webhook_type),
         )
         conn.commit()
     flash("Webhook ajouté.", "success")
@@ -552,12 +609,13 @@ def profile_webhook_delete(wh_id: int):
 def profile_webhook_test(wh_id: int):
     with db_conn() as conn:
         row = conn.execute(
-            "SELECT url FROM webhooks WHERE id=? AND user_id=?", (wh_id, current_user.id)
+            "SELECT url, webhook_type FROM webhooks WHERE id=? AND user_id=?",
+            (wh_id, current_user.id),
         ).fetchone()
     if not row:
         flash("Webhook introuvable.", "error")
         return redirect(url_for("main.profile"))
-    ok = send_webhook(row["url"], test_payload(current_user.username))
+    ok = send_webhook(row["url"], test_payload(current_user.username), row["webhook_type"] or "auto")
     flash("Test envoyé ✓" if ok else "Échec de l'envoi.", "success" if ok else "error")
     return redirect(url_for("main.profile"))
 

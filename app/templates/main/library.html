@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}Bibliothèque — SameBreaker{% endblock %}
+{% block page_title %}Bibliothèque{% endblock %}
+
+{% block head %}
+<style>
+  .lib-section-title {
+    font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    color:#5a8fa8; margin-bottom:10px; padding-bottom:6px;
+    border-bottom:1px solid #0d2240;
+  }
+  .lib-card {
+    background:#091828; border:1px solid #0d2240; border-radius:12px;
+    padding:18px 20px; display:flex; flex-direction:column; gap:10px;
+    transition:border-color .15s;
+  }
+  .lib-card:hover { border-color:#1a3a5c; }
+  .lib-card.ready { border-color:#1a4a2c; }
+  .rating-S { background:#f59e0b; color:#050b14; }
+  .rating-A { background:#34d399; color:#050b14; }
+  .rating-B { background:#00b4d8; color:#050b14; }
+  .rating-C { background:#5a8fa8; color:#050b14; }
+  .rating-badge {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; border-radius:6px; font-size:13px; font-weight:800;
+    flex-shrink:0;
+  }
+  .progress-bar-wrap {
+    height:4px; background:#0d2240; border-radius:2px; overflow:hidden;
+  }
+  .progress-bar-fill {
+    height:100%; border-radius:2px;
+    background:linear-gradient(90deg,#00b4d8,#0096b7);
+    transition:width .4s ease;
+  }
+  .rate-bar-wrap {
+    height:5px; background:#0d2240; border-radius:3px; overflow:hidden;
+  }
+  .rate-bar-fill { height:100%; border-radius:3px; transition:width .4s ease; }
+  .status-dot {
+    width:7px; height:7px; border-radius:50%; flex-shrink:0; margin-top:1px;
+  }
+  .dot-idle     { background:#1a3a5c; }
+  .dot-dl       { background:#00b4d8; animation:pulse-dot 1.2s infinite; }
+  .dot-extract  { background:#fbbf24; animation:pulse-dot 1.2s infinite; }
+  .dot-ready    { background:#34d399; }
+  .dot-error    { background:#e05252; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# Macro must be defined before use #}
+{% macro render_card(r) %}
+{%- set st = r.state %}
+{%- set sid = r.id %}
+<div class="lib-card{% if r.ready %} ready{% endif %}" id="card-{{ sid }}"
+     data-has-url="{{ '1' if (r.url or r.get('generated')) else '0' }}">
+
+  <!-- Header -->
+  <div style="display:flex; align-items:flex-start; gap:12px;">
+    <span class="rating-badge rating-{{ r.rating }}">{{ r.rating }}</span>
+    <div style="flex:1; min-width:0;">
+      <div style="font-size:14px; font-weight:700; color:#cce8f4; line-height:1.3;">{{ r.name }}</div>
+      <div style="font-size:11px; color:#5a8fa8; margin-top:2px; font-family:monospace;">{{ r.filename }}</div>
+    </div>
+    <!-- Status -->
+    <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;" id="status-label-{{ sid }}">
+      {%- if st.status == 'ready' %}
+      <span class="status-dot dot-ready"></span>
+      <span style="font-size:11px; color:#34d399; font-weight:600;">Prêt</span>
+      {%- elif st.status == 'downloading' %}
+      <span class="status-dot dot-dl"></span>
+      <span style="font-size:11px; color:#00b4d8;">DL {{ st.progress or 0 }}%</span>
+      {%- elif st.status == 'extracting' %}
+      <span class="status-dot dot-extract"></span>
+      <span style="font-size:11px; color:#fbbf24;">Extraction…</span>
+      {%- elif st.status == 'error' %}
+      <span class="status-dot dot-error"></span>
+      <span style="font-size:11px; color:#e05252;">Erreur</span>
+      {%- else %}
+      <span class="status-dot dot-idle"></span>
+      <span style="font-size:11px; color:#5a8fa8;">Non téléchargé</span>
+      {%- endif %}
+    </div>
+  </div>
+
+  <!-- Description -->
+  <div style="font-size:12px; color:#5a8fa8; line-height:1.5;">{{ r.description }}</div>
+
+  <!-- Meta -->
+  <div style="display:flex; gap:16px; font-size:11px; color:#5a8fa8; flex-wrap:wrap;">
+    <span>{{ r.count }}</span>
+    <span style="color:#3a6a88;">·</span>
+    <span title="Taille du fichier à télécharger (compressé)">
+      ↓ {{ r.size_dl }}
+    </span>
+    {%- if r.extract and r.size_raw %}
+    <span style="color:#3a6a88;">·</span>
+    <span style="color:#4a7a98;" title="Taille après extraction">
+      ⬡ {{ r.size_raw }}
+    </span>
+    {%- endif %}
+  </div>
+
+  <!-- Crack rate bar -->
+  {%- if r.get('rate') is not none and r.get('rate') is not undefined %}
+  {%- set _rate = r.rate | float %}
+  {%- if _rate >= 30 %}
+    {%- set _rc = '#34d399' %}
+  {%- elif _rate >= 15 %}
+    {%- set _rc = '#fbbf24' %}
+  {%- else %}
+    {%- set _rc = '#e05252' %}
+  {%- endif %}
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="font-size:10px; color:#5a8fa8; flex-shrink:0; font-family:monospace; width:68px;">
+      Crack rate
+    </span>
+    <div class="rate-bar-wrap" style="flex:1;">
+      <div class="rate-bar-fill" style="width:{{ [_rate * 2, 100] | min }}%; background:{{ _rc }};"></div>
+    </div>
+    <span style="font-size:11px; font-weight:700; color:{{ _rc }}; font-family:monospace; flex-shrink:0; min-width:36px; text-align:right;">
+      {{ _rate }}%
+    </span>
+  </div>
+  {%- endif %}
+
+  <!-- Download progress bar -->
+  <div class="progress-bar-wrap" id="progress-wrap-{{ sid }}"
+       style="{{ '' if st.status in ('downloading', 'extracting') else 'display:none' }}">
+    <div class="progress-bar-fill" id="progress-fill-{{ sid }}"
+         style="width:{{ st.progress or 0 }}%"></div>
+  </div>
+
+  <!-- Error -->
+  <div id="error-msg-{{ sid }}"
+       style="font-size:11px; color:#e05252; background:#1a0808; border-radius:6px; padding:6px 10px;
+              font-family:monospace; word-break:break-all;
+              {{ '' if (st.status == 'error' and st.error) else 'display:none' }}">
+    {{ st.error or '' }}
+  </div>
+
+  <!-- Actions -->
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;" id="actions-{{ sid }}">
+    {%- if r.ready %}
+    <span style="font-size:11px; color:#34d399; font-weight:600;">✓ Disponible</span>
+    <div style="margin-left:auto; display:flex; gap:6px;">
+      <button onclick="doDelete('{{ sid }}')" class="btn btn-danger btn-xs">Supprimer</button>
+    </div>
+    {%- elif st.status in ('downloading', 'extracting') %}
+    <span style="font-size:11px; color:#5a8fa8;">En cours…</span>
+    {%- elif r.url or r.get('generated') %}
+    <button onclick="doDownload('{{ sid }}')" class="btn btn-primary btn-sm">↓ Télécharger</button>
+    {%- else %}
+    <span style="font-size:11px; color:#5a8fa8; font-style:italic;">URL non configurée</span>
+    {%- endif %}
+  </div>
+
+</div>
+{% endmacro %}
+
+<div class="flex flex-col gap-8">
+
+  <!-- Wordlists -->
+  <div>
+    <div class="lib-section-title">
+      Wordlists
+      <span style="font-size:10px; color:#5a8fa8; font-weight:400; margin-left:8px;">
+        — installées dans <code style="font-size:10px;">instance/wordlists/</code>
+      </span>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px;">
+      {% for r in by_type.wordlist %}{{ render_card(r) }}{% endfor %}
+    </div>
+  </div>
+
+  <!-- Règles -->
+  <div>
+    <div class="lib-section-title">
+      Règles hashcat
+      <span style="font-size:10px; color:#5a8fa8; font-weight:400; margin-left:8px;">
+        — installées dans <code style="font-size:10px;">instance/rules/</code>
+      </span>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px;">
+      {% for r in by_type.rule %}{{ render_card(r) }}{% endfor %}
+    </div>
+  </div>
+
+  <!-- Masks -->
+  <div>
+    <div class="lib-section-title">
+      Masks
+      <span style="font-size:10px; color:#5a8fa8; font-weight:400; margin-left:8px;">
+        — générés dans <code style="font-size:10px;">instance/masks/</code>
+      </span>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px;">
+      {% for r in by_type.mask %}{{ render_card(r) }}{% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+var CSRF = {{ csrf_token() | tojson }};
+var _polling = {};
+
+function doDownload(rid) {
+  fetch('/library/download/' + rid, {
+    method: 'POST',
+    headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/json'}
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.error) { alert(d.error); return; }
+    updateCard(rid, {status: 'downloading', progress: 0, ready: false});
+    startPolling(rid);
+  })
+  .catch(function() { alert('Erreur réseau'); });
+}
+
+function doDelete(rid) {
+  if (!confirm('Supprimer ce fichier du serveur ?')) return;
+  fetch('/library/delete/' + rid, {
+    method: 'POST',
+    headers: {'X-CSRFToken': CSRF}
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.error) { alert(d.error); return; }
+    updateCard(rid, {status: 'idle', progress: 0, ready: false});
+  });
+}
+
+function startPolling(rid) {
+  if (_polling[rid]) return;
+  _polling[rid] = setInterval(function() {
+    fetch('/library/status/' + rid)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        updateCard(rid, d);
+        if (d.status !== 'downloading' && d.status !== 'extracting') {
+          clearInterval(_polling[rid]);
+          delete _polling[rid];
+        }
+      })
+      .catch(function() {});
+  }, 1500);
+}
+
+function updateCard(rid, d) {
+  var statusEl = document.getElementById('status-label-' + rid);
+  var actionsEl = document.getElementById('actions-' + rid);
+  var progressWrap = document.getElementById('progress-wrap-' + rid);
+  var progressFill = document.getElementById('progress-fill-' + rid);
+  var errorEl = document.getElementById('error-msg-' + rid);
+  var card = document.getElementById('card-' + rid);
+  if (!statusEl) return;
+
+  var pct = d.progress || 0;
+  var dotClass = 'dot-idle', label = 'Non téléchargé', labelColor = '#5a8fa8';
+  if (d.status === 'ready') {
+    dotClass = 'dot-ready'; label = 'Prêt'; labelColor = '#34d399';
+  } else if (d.status === 'downloading') {
+    dotClass = 'dot-dl'; label = 'DL ' + pct + '%'; labelColor = '#00b4d8';
+  } else if (d.status === 'extracting') {
+    dotClass = 'dot-extract'; label = 'Extraction…'; labelColor = '#fbbf24';
+  } else if (d.status === 'error') {
+    dotClass = 'dot-error'; label = 'Erreur'; labelColor = '#e05252';
+  }
+  statusEl.innerHTML =
+    '<span class="status-dot ' + dotClass + '"></span>' +
+    '<span style="font-size:11px;color:' + labelColor + ';font-weight:600;">' + label + '</span>';
+
+  if (d.status === 'downloading' || d.status === 'extracting') {
+    progressWrap.style.display = '';
+    progressFill.style.width = pct + '%';
+  } else {
+    progressWrap.style.display = 'none';
+  }
+
+  if (d.status === 'error' && d.error) {
+    errorEl.textContent = d.error;
+    errorEl.style.display = '';
+  } else {
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+  }
+
+  var hasUrl = card && card.dataset.hasUrl === '1';
+  if (d.ready || d.status === 'ready') {
+    card.classList.add('ready');
+    actionsEl.innerHTML =
+      '<span style="font-size:11px;color:#34d399;font-weight:600;">✓ Disponible</span>' +
+      '<div style="margin-left:auto;display:flex;gap:6px;">' +
+      '<button onclick="doDelete(\'' + rid + '\')" class="btn btn-danger btn-xs">Supprimer</button>' +
+      '</div>';
+  } else if (d.status === 'downloading' || d.status === 'extracting') {
+    card.classList.remove('ready');
+    actionsEl.innerHTML = '<span style="font-size:11px;color:#5a8fa8;">En cours…</span>';
+  } else {
+    card.classList.remove('ready');
+    actionsEl.innerHTML = hasUrl
+      ? '<button onclick="doDownload(\'' + rid + '\')" class="btn btn-primary btn-sm">↓ Télécharger</button>'
+      : '<span style="font-size:11px;color:#5a8fa8;font-style:italic;">URL non configurée</span>';
+  }
+}
+
+// Resume polling for in-progress downloads on page load
+(function() {
+  {% for _rtype, items in by_type.items() %}
+  {% for r in items %}
+  {% if r.state.status in ('downloading', 'extracting') %}
+  startPolling({{ r.id | tojson }});
+  {% endif %}
+  {% endfor %}
+  {% endfor %}
+})();
+</script>
+{% endblock %}

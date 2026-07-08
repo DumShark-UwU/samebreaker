@@ -24,6 +24,48 @@
   .workload-chip:hover { border-color:#00b4d8; color:#cce8f4; }
   .workload-chip.active { border-color:#00b4d8; background:#00b4d8; color:#050b14; font-weight:600; }
   .gpu-busy { opacity:0.4; pointer-events:none; cursor:not-allowed; }
+
+  /* ── Tooltips modes d'attaque ─────────────────────────────────────── */
+  .mode-btn { position: relative; }
+  .mode-btn[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 270px;
+    background: #07111f;
+    border: 1px solid #1a4a6c;
+    color: #cce8f4;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.6;
+    padding: 9px 13px;
+    border-radius: 9px;
+    white-space: normal;
+    z-index: 200;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s, transform .15s;
+    box-shadow: 0 6px 24px rgba(0,0,0,.6);
+    text-align: left;
+  }
+  .mode-btn[data-tooltip]:hover::after { opacity: 1; }
+  /* flèche */
+  .mode-btn[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1a4a6c;
+    z-index: 201;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  .mode-btn[data-tooltip]:hover::before { opacity: 1; }
 </style>
 {% endblock %}
 
@@ -113,13 +155,21 @@
   </div>
 
   <!-- Mode d'attaque -->
+  {% set _tips = {
+    0: "Teste chaque mot d'une wordlist tel quel, sans modification. Le plus rapide et le plus courant. Recommandé avec rockyou.txt ou une liste personnalisée.",
+    1: "Concatène chaque mot de la wordlist 1 avec chaque mot de la wordlist 2. Ex : « pass » + « 123 » → « pass123 ». Idéal pour les combinaisons prévisibles.",
+    3: "Génère toutes les combinaisons selon un motif (mask). ?l=minuscule ?u=majuscule ?d=chiffre ?s=symbole ?a=tout. Ex : ?u?l?l?l?d?d = 1 maj + 3 min + 2 chiffres.",
+    6: "Chaque mot de la wordlist suivi d'un suffixe généré par mask. Ex : « password » + ?d?d → « password01 » … « password99 ». Wordlist PUIS Mask.",
+    7: "Préfixe généré par mask suivi de chaque mot de la wordlist. Ex : ?d?d + « password » → « 01password » … « 99password ». Mask PUIS Wordlist.",
+  } %}
   <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
     <label class="form-label">Mode d'attaque</label>
     <div class="flex flex-wrap gap-2" id="mode-btns">
       {% for mode_id, mode_name in attack_modes.items() %}
       <button type="button" onclick="setMode({{ mode_id }})"
               class="mode-btn {% if mode_id == 0 %}active{% endif %}"
-              data-mode="{{ mode_id }}">{{ mode_id }} — {{ mode_name }}</button>
+              data-mode="{{ mode_id }}"
+              data-tooltip="{{ _tips.get(mode_id, '') }}">{{ mode_id }} — {{ mode_name }}</button>
       {% endfor %}
     </div>
 

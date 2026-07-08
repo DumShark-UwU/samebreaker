@@ -2,7 +2,66 @@
 {% block title %}Système — SameBreaker{% endblock %}
 {% block page_title %}Statut système{% endblock %}
 
+{% block head %}
+<style>
+  .sys-bar-wrap { height:6px; background:#0d2240; border-radius:3px; overflow:hidden; margin-top:4px; }
+  .sys-bar-fill { height:100%; border-radius:3px; transition:width .5s ease; }
+  .sys-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .sys-label { font-size:11px; color:#5a8fa8; text-transform:uppercase; letter-spacing:.06em; min-width:36px; }
+  .sys-val { font-size:12px; color:#cce8f4; font-family:monospace; white-space:nowrap; }
+  .sys-sub { font-size:10px; color:#5a8fa8; }
+</style>
+{% endblock %}
+
 {% block content %}
+
+<!-- Ressources système (CPU / RAM / Disk) -->
+<div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Ressources</h2>
+    <span class="text-xs text-ink-muted" id="sysinfo-updated"></span>
+  </div>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;" id="sysinfo-grid">
+
+    <!-- CPU -->
+    <div style="background:#0d2240; border-radius:10px; padding:14px 16px;">
+      <div class="sys-row">
+        <span class="sys-label">CPU</span>
+        <span class="sys-val" id="cpu-pct">—</span>
+      </div>
+      <div class="sys-bar-wrap">
+        <div class="sys-bar-fill" id="cpu-bar" style="width:0%; background:linear-gradient(90deg,#00b4d8,#0096b7);"></div>
+      </div>
+      <div class="sys-sub" id="cpu-sub" style="margin-top:5px;"></div>
+    </div>
+
+    <!-- RAM -->
+    <div style="background:#0d2240; border-radius:10px; padding:14px 16px;">
+      <div class="sys-row">
+        <span class="sys-label">RAM</span>
+        <span class="sys-val" id="ram-pct">—</span>
+      </div>
+      <div class="sys-bar-wrap">
+        <div class="sys-bar-fill" id="ram-bar" style="width:0%; background:linear-gradient(90deg,#34d399,#0d9488);"></div>
+      </div>
+      <div class="sys-sub" id="ram-sub" style="margin-top:5px;"></div>
+    </div>
+
+    <!-- Disk -->
+    <div style="background:#0d2240; border-radius:10px; padding:14px 16px;">
+      <div class="sys-row">
+        <span class="sys-label">Disk</span>
+        <span class="sys-val" id="disk-pct">—</span>
+      </div>
+      <div class="sys-bar-wrap">
+        <div class="sys-bar-fill" id="disk-bar" style="width:0%; background:linear-gradient(90deg,#fbbf24,#f59e0b);"></div>
+      </div>
+      <div class="sys-sub" id="disk-sub" style="margin-top:5px;"></div>
+    </div>
+
+  </div>
+</div>
 
 <!-- Dépendances -->
 <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
@@ -77,5 +136,65 @@
     </p>
   {% endif %}
 </div>
+
+<script>
+function _barColor(pct) {
+  if (pct >= 90) return 'linear-gradient(90deg,#e05252,#c03030)';
+  if (pct >= 70) return 'linear-gradient(90deg,#fbbf24,#f59e0b)';
+  return null;
+}
+
+function fetchSysinfo() {
+  fetch('/api/sysinfo')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      // CPU
+      if (d.cpu_pct !== null) {
+        var cpuPct = d.cpu_pct;
+        document.getElementById('cpu-pct').textContent = cpuPct + '%';
+        var cpuBar = document.getElementById('cpu-bar');
+        cpuBar.style.width = cpuPct + '%';
+        var cpuColor = _barColor(cpuPct);
+        if (cpuColor) cpuBar.style.background = cpuColor;
+        document.getElementById('cpu-sub').textContent =
+          'Load avg: ' + d.cpu_load1 + ' — ' + d.cpu_count + ' cores';
+      }
+
+      // RAM
+      if (d.ram_pct !== null) {
+        var ramPct = d.ram_pct;
+        document.getElementById('ram-pct').textContent = ramPct + '%';
+        var ramBar = document.getElementById('ram-bar');
+        ramBar.style.width = ramPct + '%';
+        var ramColor = _barColor(ramPct);
+        if (ramColor) ramBar.style.background = ramColor;
+        document.getElementById('ram-sub').textContent =
+          d.ram_used_gb + ' GB / ' + d.ram_total_gb + ' GB';
+      }
+
+      // Disk (root)
+      var dr = d.disk_root;
+      if (dr && dr.total_gb) {
+        var diskPct = dr.pct;
+        document.getElementById('disk-pct').textContent = diskPct + '%';
+        var diskBar = document.getElementById('disk-bar');
+        diskBar.style.width = diskPct + '%';
+        var diskColor = _barColor(diskPct);
+        if (diskColor) diskBar.style.background = diskColor;
+        document.getElementById('disk-sub').textContent =
+          dr.used_gb + ' GB / ' + dr.total_gb + ' GB libre: ' + dr.free_gb + ' GB';
+      }
+
+      // Timestamp
+      var now = new Date();
+      document.getElementById('sysinfo-updated').textContent =
+        'Mis à jour ' + now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    })
+    .catch(function() {});
+}
+
+fetchSysinfo();
+setInterval(fetchSysinfo, 4000);
+</script>
 
 {% endblock %}

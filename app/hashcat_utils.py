@@ -26,8 +26,9 @@ ATTACK_MODES: dict[int, str] = {
 }
 
 _DEVICE_ID_PATTERN   = re.compile(r"\s*Backend Device ID #(\d+)")
-_DEVICE_NAME_PATTERN = re.compile(r"\s*Name\.*:\s*(.+)")
-_DEVICE_TYPE_PATTERN = re.compile(r"\s*Type\.*:\s*(.+)")
+_DEVICE_NAME_PATTERN = re.compile(r"\s*Name\.{5,}:\s*(.+)")
+_DEVICE_TYPE_PATTERN = re.compile(r"\s*Type\.{5,}:\s*(.+)")
+_SECTION_PATTERN     = re.compile(r"^[A-Za-z]")
 
 _MAX_HASH_CANDIDATES = 12
 
@@ -54,6 +55,13 @@ def get_devices() -> list[dict]:
         devices: list[dict] = []
         current: dict = {}
         for line in output.splitlines():
+            # Header de section top-level (ex : "OpenCL Info:", "OpenCL Platform ID #1")
+            # → clôture le device courant et remet le contexte à zéro
+            if _SECTION_PATTERN.match(line) and not _DEVICE_ID_PATTERN.match(line):
+                if current:
+                    devices.append(current)
+                current = {}
+                continue
             m = _DEVICE_ID_PATTERN.match(line)
             if m:
                 if current:

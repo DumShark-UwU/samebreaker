@@ -69,13 +69,15 @@ def create_app() -> Flask:
     reset_stale_jobs()
     seed_default_admin()
 
-    from .auth  import bp as auth_bp
-    from .main  import bp as main_bp
-    from .admin import bp as admin_bp
+    from .auth    import bp as auth_bp
+    from .main    import bp as main_bp
+    from .admin   import bp as admin_bp
+    from .library import bp as library_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(library_bp)
 
     @app.before_request
     def _refresh_session() -> None:

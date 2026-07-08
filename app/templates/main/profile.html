@@ -80,10 +80,12 @@
     <div class="flex flex-col gap-2">
       {% for wh in webhooks %}
       {% set wh_events = wh.events.split(",") if wh.events else [] %}
+      {% set wh_type = wh.webhook_type or 'auto' %}
       <div class="flex items-center gap-3 p-3 rounded-lg" style="background:#0d2240; border:1px solid #1a3a5c;">
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 mb-0.5">
+          <div class="flex items-center gap-2 mb-0.5 flex-wrap">
             <span class="text-sm font-medium text-ink">{{ wh.label or "Sans nom" }}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded font-mono" style="background:#050b14; color:#5a8fa8; border:1px solid #1a3a5c;">{{ wh_type }}</span>
             {% if "job_done" in wh_events %}
             <span class="text-xs px-1.5 py-0.5 rounded" style="background:#0a1e35; color:#00b4d8; border:1px solid #1a3a5c;">job terminé</span>
             {% endif %}
@@ -117,6 +119,47 @@
     <p class="text-sm" style="color:#3a6a8a;">Aucun webhook configuré.</p>
     {% endif %}
 
+    <!-- Services supportés -->
+    <div style="background:#0a1e35; border:1px solid #0d2240; border-radius:8px; padding:12px 14px; font-size:12px;">
+      <div style="color:#5a8fa8; margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Services supportés</div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="width:72px; color:#cce8f4; font-weight:600;">Discord</span>
+          <span style="color:#34d399; font-size:11px;">✓ Natif</span>
+          <a href="https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks"
+             target="_blank" rel="noopener" style="margin-left:auto; font-size:11px; color:#00b4d8;">Doc ↗</a>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="width:72px; color:#cce8f4; font-weight:600;">Slack</span>
+          <span style="color:#34d399; font-size:11px;">✓ Natif</span>
+          <a href="https://api.slack.com/messaging/webhooks"
+             target="_blank" rel="noopener" style="margin-left:auto; font-size:11px; color:#00b4d8;">Doc ↗</a>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="width:72px; color:#cce8f4; font-weight:600;">Teams</span>
+          <span style="color:#34d399; font-size:11px;">✓ Natif</span>
+          <a href="https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook"
+             target="_blank" rel="noopener" style="margin-left:auto; font-size:11px; color:#00b4d8;">Doc ↗</a>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="width:72px; color:#cce8f4; font-weight:600;">ntfy</span>
+          <span style="color:#34d399; font-size:11px;">✓ Natif</span>
+          <a href="https://docs.ntfy.sh/publish/"
+             target="_blank" rel="noopener" style="margin-left:auto; font-size:11px; color:#00b4d8;">Doc ↗</a>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="width:72px; color:#cce8f4; font-weight:600;">Signal</span>
+          <span style="color:#fbbf24; font-size:11px;">✓ via CallMeBot</span>
+          <a href="https://www.callmebot.com/blog/free-api-signal-send-messages/"
+             target="_blank" rel="noopener" style="margin-left:auto; font-size:11px; color:#00b4d8;">Doc ↗</a>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="width:72px; color:#cce8f4; font-weight:600;">Générique</span>
+          <span style="color:#5a8fa8; font-size:11px;">HTTP POST JSON (format Discord)</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Formulaire ajout -->
     <details class="group">
       <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2"
@@ -128,14 +171,26 @@
             class="flex flex-col gap-3 mt-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <div>
-          <label class="form-label">Nom <span style="color:#3a6a8a;">(ex: Discord CTF, Slack team)</span></label>
+          <label class="form-label">Nom</label>
           <input name="label" type="text" class="form-input" placeholder="Mon webhook Discord" maxlength="64" />
         </div>
         <div>
+          <label class="form-label">Type de service</label>
+          <select name="webhook_type" id="wh-type" class="form-input" onchange="onTypeChange(this.value)">
+            <option value="auto">Auto (détection par URL)</option>
+            <option value="discord">Discord</option>
+            <option value="slack">Slack</option>
+            <option value="teams">Microsoft Teams</option>
+            <option value="ntfy">ntfy</option>
+            <option value="signal">Signal (CallMeBot)</option>
+            <option value="generic">Générique (HTTP POST JSON)</option>
+          </select>
+        </div>
+        <div>
           <label class="form-label">URL</label>
-          <input name="url" type="url" class="form-input" required
+          <input name="url" type="url" id="wh-url" class="form-input" required
                  placeholder="https://discord.com/api/webhooks/..." />
-          <p class="text-xs mt-1" style="color:#3a6a8a;">Compatible Discord, Slack, n8n, ou tout endpoint HTTP POST JSON.</p>
+          <p class="text-xs mt-1" id="wh-hint" style="color:#3a6a8a;"></p>
         </div>
         <div class="flex flex-col gap-2">
           <label class="form-label">Événements</label>
@@ -157,6 +212,34 @@
       </form>
     </details>
   </div>
+
+<script>
+var _WH_HINTS = {
+  auto:    "L'URL est auto-détectée (Discord / Slack / Teams / ntfy / Signal).",
+  discord: "URL du webhook Discord : Paramètres serveur → Intégrations → Webhooks.",
+  slack:   "URL Slack Incoming Webhook depuis api.slack.com/apps.",
+  teams:   "URL Teams : Canal → ··· → Connecteurs → Incoming Webhook.",
+  ntfy:    "URL ntfy : https://ntfy.sh/VOTRE_TOPIC ou votre instance self-hosted.",
+  signal:  "URL CallMeBot Signal : https://signal.callmebot.com/signal/send.php?phone=+33...&apikey=XXX — le texte est ajouté automatiquement.",
+  generic: "Endpoint HTTP POST qui accepte un JSON body au format Discord (content + embeds).",
+};
+var _WH_PLACEHOLDERS = {
+  discord: "https://discord.com/api/webhooks/...",
+  slack:   "https://hooks.slack.com/services/...",
+  teams:   "https://xxxx.webhook.office.com/webhookb2/...",
+  ntfy:    "https://ntfy.sh/mon-topic",
+  signal:  "https://signal.callmebot.com/signal/send.php?phone=+33...&apikey=XXX",
+  generic: "https://...",
+  auto:    "https://discord.com/api/webhooks/...",
+};
+function onTypeChange(val) {
+  var hint = document.getElementById('wh-hint');
+  var urlInput = document.getElementById('wh-url');
+  hint.textContent = _WH_HINTS[val] || '';
+  urlInput.placeholder = _WH_PLACEHOLDERS[val] || 'https://...';
+}
+onTypeChange('auto');
+</script>
 
   <!-- Section 2FA -->
   <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
