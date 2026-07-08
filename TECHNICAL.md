@@ -1,8 +1,8 @@
 # SameBreaker — Documentation Technique
 
-Interface web multi-utilisateurs pour hashcat | v1.2.2 | By DumShark-UwU
+Interface web multi-utilisateurs pour hashcat | v1.3.0 | By DumShark-UwU
 
-Pipeline de cassage de hash avec gestion de jobs, supervision GPU en temps réel, streaming SSE, 2FA TOTP et webhooks Discord-compatible.
+Pipeline de cassage de hash avec gestion de jobs, supervision GPU en temps réel, streaming SSE, 2FA TOTP, bibliothèque de ressources et webhooks multi-services.
 
 ---
 
@@ -17,12 +17,14 @@ Pipeline de cassage de hash avec gestion de jobs, supervision GPU en temps réel
 7. [Authentification & 2FA](#7-authentification--2fa)
 8. [Rate limiting](#8-rate-limiting)
 9. [Webhooks](#9-webhooks)
-10. [Sécurité](#10-sécurité)
-11. [Configuration](#11-configuration)
-12. [Déploiement production](#12-déploiement-production)
-13. [Flux de données complet](#13-flux-de-données-complet)
-14. [Dépendances](#14-dépendances)
-15. [Changelog](#15-changelog)
+10. [Bibliothèque de ressources](#10-bibliothèque-de-ressources)
+11. [Métriques système](#11-métriques-système)
+12. [Sécurité](#12-sécurité)
+13. [Configuration](#13-configuration)
+14. [Déploiement production](#14-déploiement-production)
+15. [Flux de données complet](#15-flux-de-données-complet)
+16. [Dépendances](#16-dépendances)
+17. [Changelog](#17-changelog)
 
 ---
 
@@ -35,24 +37,27 @@ SameBreaker est une interface web Flask multi-utilisateurs pour piloter hashcat 
 ```
 Browser ──HTTP/SSE──► Flask (Gunicorn -w 1)
                               │
-                    ┌─────────┼──────────────┐
-                    ▼         ▼              ▼
-                 SQLite   hashcat         Webhooks
-               (jobs,    subprocess     (Discord /
-               users,    (threads)       Slack /
-               webhooks)                 custom)
+                    ┌─────────┼──────────────┬──────────────┐
+                    ▼         ▼              ▼              ▼
+                 SQLite   hashcat         Webhooks       Bibliothèque
+               (jobs,    subprocess     (Discord /      (téléchargement
+               users,    (threads)       Slack /         urllib, extraction
+               webhooks)                 Teams /         7z/tarfile/gzip)
+                                         ntfy /
+                                         Signal)
 ```
 
 ### Couches logiques
 
 | Couche | Modules | Rôle |
 |--------|---------|------|
-| Entrée HTTP | `auth.py`, `main.py`, `admin.py` | Blueprints Flask, CSRF, `@login_required` |
+| Entrée HTTP | `auth.py`, `main.py`, `admin.py`, `library.py` | Blueprints Flask, CSRF, `@login_required` |
 | Modèles | `models.py` | `User` (Flask-Login) |
 | Persistance | `db.py` | `db_conn()`, `init_db()`, migrations idempotentes |
 | Jobs | `jobs.py` | Cycle de vie hashcat, threading, polling pot, webhooks |
 | Utilitaires | `hashcat_utils.py` | Détection devices, parsing `-I`, construction commande |
-| Notifications | `notify.py` | Payloads et envoi webhooks |
+| Notifications | `notify.py` | Payloads et envoi webhooks multi-services |
+| Bibliothèque | `library.py` | Catalogue, téléchargement streamé, extraction multi-format |
 | Application | `__init__.py` | `create_app()`, config, security headers |
 
 ---
@@ -250,12 +255,13 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 ```sql
 CREATE TABLE IF NOT EXISTS webhooks (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    label      TEXT    NOT NULL DEFAULT '',
-    url        TEXT    NOT NULL,
-    events     TEXT    NOT NULL DEFAULT '',               -- ex: "password_found,job_done"
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label        TEXT    NOT NULL DEFAULT '',
+    url          TEXT    NOT NULL,
+    events       TEXT    NOT NULL DEFAULT '',             -- ex: "password_found,job_done"
+    webhook_type TEXT    NOT NULL DEFAULT 'auto',         -- discord|slack|teams|ntfy|signal|generic|auto
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -476,7 +482,19 @@ class RateLimiter:
 
 ## 9. Webhooks
 
-Format de payload compatible Discord (fonctionne aussi avec tout webhook JSON compatible). Envoi via `urllib.request.urlopen` — aucune dépendance externe (`requests` non requis).
+Envoi via `urllib.request.urlopen` — aucune dépendance externe (`requests` non requis). Le payload interne est toujours au format Discord (`content` + `embeds`) et converti selon le `webhook_type` avant l'envoi.
+
+### Services supportés
+
+| Type | Détection URL automatique | Format envoyé |
+|------|--------------------------|---------------|
+| `discord` | `discord.com/api/webhooks` | `content` + `embeds` (natif) |
+| `slack` | `hooks.slack.com` | `text` + `attachments` |
+| `teams` | `webhook.office.com` | MessageCard (`@type`, `sections`, `facts`) |
+| `ntfy` | `ntfy.sh` | JSON `message`/`title`/`priority`/`tags` |
+| `signal` | `signal.callmebot.com` | GET avec `&text=` en paramètre URL |
+| `generic` | (fallback) | `content` + `embeds` (format Discord) |
+| `auto` | — | Détection automatique par URL, fallback `generic` |
 
 ### Événements
 
@@ -485,7 +503,7 @@ Format de payload compatible Discord (fonctionne aussi avec tout webhook JSON co
 | `password_found` | Nouvelles lignes détectées dans le `.pot` | Toutes les 100 lignes de log |
 | `job_done` | Fin du thread `_run()` (completed, failed ou après stop) | Une fois par job |
 
-### Payload `job_done`
+### Payload interne `job_done` (format Discord, base pour toutes les conversions)
 
 ```json
 {
@@ -501,30 +519,127 @@ Format de payload compatible Discord (fonctionne aussi avec tout webhook JSON co
 }
 ```
 
-### Payload `password_found`
+### Exemple converti Teams (MessageCard)
 
 ```json
 {
-  "content": "🔓 **MonJob** — 2 nouveau(x) mot(s) de passe cracké(s) !",
-  "embeds": [{
-    "title": "Job #42 — Crack détecté",
-    "color": 65416,
-    "fields": [{
-      "name": "Résultats",
-      "value": "`hash1:password1`\n`hash2:password2`",
-      "inline": false
-    }]
+  "@type": "MessageCard",
+  "@context": "http://schema.org/extensions",
+  "themeColor": "00b4d8",
+  "summary": "✅ **MonJob** terminé — 3 mot(s) de passe trouvé(s)",
+  "sections": [{
+    "activityTitle": "Job #42 — completed",
+    "facts": [
+      {"name": "Statut",        "value": "completed"},
+      {"name": "Mots de passe", "value": "3"}
+    ]
+  }]
+}
+```
+
+### Exemple converti Slack
+
+```json
+{
+  "text": "✅ **MonJob** terminé — 3 mot(s) de passe trouvé(s)",
+  "attachments": [{
+    "color": "#00b4d8",
+    "text": "*Job #42 — completed*",
+    "fields": [
+      {"title": "Statut",        "value": "completed", "short": true},
+      {"title": "Mots de passe", "value": "3",         "short": true}
+    ]
   }]
 }
 ```
 
 ### Chargement avant thread
 
-Les webhooks sont chargés depuis la BDD **avant** le démarrage du thread `_run()`, pas à l'intérieur. Cela évite les accès BDD répétés dans la boucle de lecture et garantit que la liste est cohérente pour toute la durée du job.
+Les webhooks (url + events + webhook_type) sont chargés depuis la BDD **avant** le démarrage du thread `_run()`. Cela évite les accès BDD répétés dans la boucle de lecture et garantit que la liste est cohérente pour toute la durée du job.
 
 ---
 
-## 10. Sécurité
+## 10. Bibliothèque de ressources
+
+Blueprint Flask `library_bp` monté sur `/library`. Gère le téléchargement, l'extraction et la suppression de wordlists, règles et masks depuis un catalogue curé.
+
+### Catalogue (`CATALOG`)
+
+Dictionnaire Python statique de 13 entrées. Champs par entrée :
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `name` | str | Nom affiché |
+| `type` | str | `wordlist` / `rule` / `mask` |
+| `rating` | str | S / A / B / C |
+| `count` | str | Nombre de mots/règles/patterns |
+| `size_dl` | str | Taille compressée |
+| `size_raw` | str | Taille après extraction |
+| `rate` | float | Crack rate réel (wordlists uniquement, source weakpass.com) |
+| `url` | str\|None | URL de téléchargement (None pour les masks générés) |
+| `filename` | str | Nom du fichier final extrait |
+| `compressed` | str\|None | Nom du fichier compressé (None si pas d'extraction) |
+| `extract` | bool | True si extraction nécessaire |
+| `generated` | bool | True si généré localement (masks) |
+| `masks` | list | Patterns hcmask (masks uniquement) |
+
+### Cycle de téléchargement
+
+```
+POST /library/download/<rid>
+    │
+    ├─ Vérifie statut idle
+    ├─ _state[rid] = {status: 'downloading', progress: 0}
+    └─ threading.Thread(_download_thread).start()
+         │
+         ▼
+_download_thread()
+    ├─ urllib.request : stream → instance/wordlists/.downloads/<filename>
+    │   (mise à jour _state.progress toutes les 256 KB)
+    ├─ _state = {status: 'extracting'}
+    ├─ Extraction selon extension :
+    │   ├─ .tar.gz → tarfile (filtre path traversal + flatten)
+    │   ├─ .gz     → gzip (stream decompress)
+    │   └─ .7z     → subprocess 7z/7za/7zz (auto-détection binaire)
+    ├─ dest_dl.unlink() — archive supprimée immédiatement après extraction
+    └─ _state = {status: 'ready'}
+
+GET /library/status/<rid>  → polling JSON toutes les 1.5 s (JS)
+```
+
+### État thread-safe
+
+`_state` (dict global) + `_state_lock` (`threading.Lock`). Toutes les lectures/écritures sur `_state` sont protégées. Le thread ne touche jamais directement à Flask `current_app` après sa création (context passé en paramètre `app`).
+
+### Destinations
+
+| Type | Dossier |
+|------|---------|
+| Wordlists | `instance/wordlists/` |
+| Règles | `instance/rules/` |
+| Masks | `instance/masks/` |
+
+---
+
+## 11. Métriques système
+
+Route `GET /api/sysinfo` dans `main.py`. Retourne un objet JSON sans dépendance externe (pas de `psutil`).
+
+| Métrique | Source | Calcul |
+|----------|--------|--------|
+| `cpu_pct` | `/proc/loadavg` (load avg 1 min) | `min(100, load1 / cpu_count * 100)` |
+| `cpu_load1` | `/proc/loadavg` | première valeur brute |
+| `cpu_count` | `os.cpu_count()` | — |
+| `ram_pct` | `/proc/meminfo` | `(MemTotal - MemAvailable) / MemTotal * 100` |
+| `ram_total_gb` | `/proc/meminfo` (MemTotal kB) | `/1024/1024`, arrondi 1 décimale |
+| `ram_used_gb` | `/proc/meminfo` | `MemTotal - MemAvailable` converti |
+| `disk_root` | `shutil.disk_usage("/")` | `pct`, `total_gb`, `used_gb`, `free_gb` |
+
+Le front-end (`system.html`) poll `/api/sysinfo` toutes les **4 s** via `setInterval`. Les barres changent de couleur dynamiquement : bleu/vert/amber par défaut → orange ≥70% → rouge ≥90%.
+
+---
+
+## 12. Sécurité
 
 | Mécanisme | Implémentation |
 |-----------|---------------|
@@ -542,7 +657,7 @@ Les webhooks sont chargés depuis la BDD **avant** le démarrage du thread `_run
 
 ---
 
-## 11. Configuration
+## 13. Configuration
 
 Fichier `instance/config.json` — généré automatiquement au premier démarrage :
 
@@ -576,7 +691,7 @@ Variables d'environnement (prioritaires sur `config.json`) :
 
 ---
 
-## 12. Déploiement production
+## 14. Déploiement production
 
 ### Gunicorn
 
@@ -633,7 +748,7 @@ server {
 
 ---
 
-## 13. Flux de données complet
+## 15. Flux de données complet
 
 ```
 Utilisateur
@@ -677,7 +792,7 @@ UI
 
 ---
 
-## 14. Dépendances
+## 16. Dépendances
 
 | Package | Usage |
 |---------|-------|
@@ -693,10 +808,11 @@ Aucune dépendance JS externe — l'UI utilise uniquement Tailwind CSS (CDN) et 
 
 ---
 
-## 15. Changelog
+## 17. Changelog
 
 | Version | Changements |
 |---------|-------------|
+| **v1.3.0** | **Bibliothèque** (`library.py` + `/library`) : catalogue 13 ressources, téléchargement streamé urllib, extraction `.7z`/`.tar.gz`/`.gz`, archives supprimées après extraction, état thread-safe, polling JS 1.5 s, crack rate visuel par wordlist. **Métriques système** : `/api/sysinfo` (CPU/RAM/Disk via `/proc`, poll 4 s, barres colorées). **Webhooks multi-services** : `webhook_type` en BDD, conversion Slack/Teams/ntfy/Signal (CallMeBot), détection auto par URL, sélecteur + liens docs dans le profil. **Cap DOM log** 200 éléments. |
 | **v1.2.2** | Tooltips CSS sur les boutons de mode d'attaque (descriptions inline au survol, CSS pur, aucune dépendance JS) |
 | **v1.2.1** | Fix parseur GPU : `_SECTION_PATTERN` + regex `\.{5,}` corrigeant la corruption du nom device #8 par les headers de plateforme OpenCL ; smart scroll benchmark (auto-scroll désactivable, bouton "Suivre", hauteur 640 px, bouton "Copier tout") |
 | **v1.2.0** | Fix race condition stop→failed (vérification statut BDD avant UPDATE final) ; webhooks sur `resume_job` ; refactoring `db.py` (suppression `get_db()`, migrations propres) ; fix upload wordlist (chemin absolu via `instance_path`) ; fix SELECT profil (colonnes supprimées) ; ajout `setup.sh` / `setup_hashcat.sh` |

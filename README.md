@@ -6,6 +6,22 @@ Interface web multi-utilisateurs pour hashcat — gestion de jobs de cassage de 
 
 ---
 
+## Captures d'écran ![](img/Emote-gura8.png)
+
+| Login | Dashboard |
+|-------|-----------|
+| ![Login](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.3.0/screenshot_login.png) | ![Dashboard](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.3.0/screenshot_dashboard.png) |
+
+| Nouvelle attaque | Bibliothèque |
+|------------------|--------------|
+| ![Nouvelle attaque](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.3.0/screenshot_new_attack.png) | ![Bibliothèque](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.3.0/screenshot_library.png) |
+
+| Système (CPU/RAM/Disk) | Profil & Webhooks |
+|------------------------|-------------------|
+| ![Système](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.3.0/screenshot_system.png) | ![Profil](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.3.0/screenshot_profile.png) |
+
+---
+
 ## Fonctionnalités ![](img/Emote-gura8.png)
 
 - **Interface web complète** — dashboard, nouvelle attaque, détail de job, benchmark, profil
@@ -37,6 +53,10 @@ Interface web multi-utilisateurs pour hashcat — gestion de jobs de cassage de 
 - **Session idle timeout** — déconnexion automatique après inactivité (configurable, défaut 60 min)
 - **CSRF** — protection sur tous les formulaires et endpoints POST
 - **Security headers** — X-Frame-Options, X-Content-Type-Options, Referrer-Policy, HSTS
+- **Bibliothèque de ressources** — catalogue de wordlists/règles/masks curatés (`/library`) ; téléchargement streamé avec progression, extraction multi-format (`.7z`/`.tar.gz`/`.gz`), archives supprimées automatiquement
+- **Crack rate visuel** — barre colorée par wordlist (taux réel weakpass.com) : vert ≥30%, orange ≥15%, rouge <15%
+- **Métriques système en temps réel** — widgets CPU/RAM/Disk sur la page Système, polling 4 s, sans dépendance externe
+- **Webhooks multi-services** — Discord, Slack, Microsoft Teams, ntfy, Signal (via CallMeBot), Générique ; détection automatique par URL, conversion de payload par type, liens docs officiels dans l'UI
 
 ---
 
@@ -138,8 +158,12 @@ python seed_admin.py
 | `/attack/<id>/stop` | POST | Auth | Stopper un job (confirmation inline) |
 | `/attack/<id>/resume` | POST | Auth | Reprendre un job stoppé/failed |
 | `/attack/<id>/download` | GET | Auth | Télécharger les résultats |
-| `/system` | GET | Auth | Infos système (GPU, wordlists) |
+| `/system` | GET | Auth | Infos système (GPU, wordlists, métriques CPU/RAM/Disk) |
 | `/benchmark` | GET | Auth | Page benchmark |
+| `/library` | GET | Auth | Bibliothèque — catalogue wordlists/règles/masks |
+| `/library/download/<rid>` | POST | Auth | Lancer le téléchargement d'une ressource |
+| `/library/status/<rid>` | GET | Auth | Statut JSON du téléchargement en cours |
+| `/library/delete/<rid>` | POST | Auth | Supprimer une ressource installée |
 | `/profile` | GET / POST | Auth | Profil + changement de mot de passe |
 | `/profile/2fa/setup` | POST | Auth | Activer / reconfigurer son propre 2FA depuis le profil |
 | `/profile/2fa/disable` | POST | Auth | Désactiver son propre 2FA (bloqué si `require_2fa` actif) |
@@ -168,6 +192,7 @@ python seed_admin.py
 | `/api/benchmark/stop` | POST | Stopper le benchmark (admin) |
 | `/api/benchmark/status` | GET | Statut + output du benchmark |
 | `/api/benchmark/stream` | GET (SSE) | Stream benchmark en temps réel |
+| `/api/sysinfo` | GET | Métriques CPU / RAM / Disk (JSON) |
 
 ---
 
@@ -180,10 +205,12 @@ samebreaker/
 │   ├── db.py               # db_conn(), init_db(), reset_stale_jobs(), seed_default_admin()
 │   ├── models.py           # Classe User (Flask-Login)
 │   ├── auth.py             # Login / logout + rate limiting
-│   ├── main.py             # Routes principales + API
+│   ├── main.py             # Routes principales + API (sysinfo, profil, webhooks)
 │   ├── admin.py            # Gestion utilisateurs + audit jobs (admin)
 │   ├── jobs.py             # Cycle de vie des jobs hashcat
 │   ├── hashcat_utils.py    # detect_hash, get_devices, build_command
+│   ├── library.py          # Blueprint /library — catalogue, téléchargement, extraction
+│   ├── notify.py           # Webhooks multi-services (Discord/Slack/Teams/ntfy/Signal)
 │   ├── static/
 │   │   └── assets/
 │   │       └── logo.png
@@ -199,6 +226,7 @@ samebreaker/
 │       │   ├── job_detail.html
 │       │   ├── system.html
 │       │   ├── benchmark.html
+│       │   ├── library.html
 │       │   └── profile.html
 │       └── admin/
 │           ├── users.html
@@ -209,7 +237,9 @@ samebreaker/
 │   ├── config.json         # SECRET_KEY persistée
 │   ├── samebreaker.db      # Base SQLite
 │   ├── jobs/               # Hash files, logs, pot files, restore files
-│   └── wordlists/          # Wordlists uploadées
+│   ├── wordlists/          # Wordlists uploadées + téléchargées via /library
+│   ├── rules/              # Règles hashcat installées via /library
+│   └── masks/              # Masks générés via /library
 ├── img/                    # Emotes Gawr Gura
 ├── run.py                  # Point d'entrée
 ├── seed_admin.py           # Création manuelle d'un admin
@@ -294,6 +324,7 @@ Pour les détails d'architecture interne, le schéma de base de données, le cyc
 
 | Version | Changement principal |
 |---------|---------------------|
+| v1.3.0 | Bibliothèque wordlists/règles/masks avec téléchargement streamé et crack rate visuel ; métriques système temps réel (CPU/RAM/Disk) ; webhooks multi-services (Slack, Teams, ntfy, Signal) ; cap DOM log 200 éléments |
 | v1.2.2 | Tooltips CSS sur les boutons de mode d'attaque |
 | v1.2.1 | Fix détection GPU (device #8) ; smart scroll benchmark ; bouton "Copier tout" |
 | v1.2.0 | Fix race condition stop→failed ; webhooks sur reprise de job ; refactoring db.py ; fix upload wordlist |
