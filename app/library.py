@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 import threading
 import urllib.request
 from pathlib import Path
@@ -276,12 +275,6 @@ def _is_ready(app, rid: str) -> bool:
 
 # ── Download thread ───────────────────────────────────────────────────────────
 
-def _find_7z() -> Optional[str]:
-    for cmd in ("7z", "7za", "7zz"):
-        if shutil.which(cmd):
-            return cmd
-    return None
-
 
 def _download_thread(app, rid: str) -> None:
     res = CATALOG[rid]
@@ -349,17 +342,11 @@ def _download_thread(app, rid: str) -> None:
                     dest_dl.unlink(missing_ok=True)
 
                 else:
-                    # .7z via subprocess
-                    z7 = _find_7z()
-                    if not z7:
-                        raise RuntimeError("7z introuvable — installez p7zip-full sur le serveur")
-                    result = subprocess.run(
-                        [z7, "e", str(dest_dl), f"-o{out_dir}", "-y"],
-                        capture_output=True, timeout=7200,
-                    )
+                    # .7z via py7zr (pure Python, aucune dépendance système)
+                    import py7zr as _py7zr
+                    with _py7zr.SevenZipFile(str(dest_dl), mode="r") as zf:
+                        zf.extractall(path=str(out_dir))
                     dest_dl.unlink(missing_ok=True)
-                    if result.returncode != 0:
-                        raise RuntimeError(result.stderr.decode(errors="replace")[:300])
 
             _set_state(rid, status="ready", progress=100, error=None)
 

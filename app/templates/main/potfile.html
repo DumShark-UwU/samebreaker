@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Potfile — SameBreaker{% endblock %}
+{% block page_title %}Potfile{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center gap-3 mb-1">
+  <span class="text-xs text-ink-muted">
+    {{ jobs | length }} job{{ 's' if jobs | length != 1 else '' }} avec des résultats crackés.
+    Téléchargez le potfile de chaque attaque directement.
+  </span>
+</div>
+
+{% if jobs %}
+<div class="rounded-xl border overflow-hidden" style="border-color:#0d2240;">
+  <table class="w-full text-sm">
+    <thead style="background:#0d2240;">
+      <tr class="text-left text-ink-muted text-xs uppercase tracking-wider">
+        <th class="px-4 py-3 w-10">#</th>
+        <th class="px-4 py-3">Nom du job</th>
+        <th class="px-4 py-3">Mode</th>
+        <th class="px-4 py-3">Date</th>
+        <th class="px-4 py-3 text-center">Crackés</th>
+        <th class="px-4 py-3 text-right">Télécharger</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for j in jobs %}
+      <tr class="border-t" style="border-color:#0d2240; background:#091828;">
+        <td class="px-4 py-3 text-xs text-ink-muted font-mono">
+          <a href="{{ url_for('main.job_detail', job_id=j.id) }}"
+             class="text-accent hover:underline">#{{ j.id }}</a>
+        </td>
+        <td class="px-4 py-3 font-medium text-ink">{{ j.name }}</td>
+        <td class="px-4 py-3 text-xs text-ink-muted">
+          {% set _modes = {0:'Dict', 1:'Combi', 3:'Mask', 6:'Hybride WL+M', 7:'Hybride M+WL'} %}
+          {{ _modes.get(j.attack_mode, j.attack_mode) }}
+        </td>
+        <td class="px-4 py-3 text-xs text-ink-muted whitespace-nowrap">
+          {{ j.created_at[:16] if j.created_at else '—' }}
+        </td>
+        <td class="px-4 py-3 text-center">
+          <span class="font-mono font-bold text-ok">{{ j.result_count }}</span>
+        </td>
+        <td class="px-4 py-3 text-right">
+          <div class="flex gap-1 justify-end">
+            <a href="{{ url_for('main.download_results', job_id=j.id) }}?format=txt"
+               class="btn btn-secondary btn-xs">TXT</a>
+            <a href="{{ url_for('main.download_results', job_id=j.id) }}?format=csv"
+               class="btn btn-secondary btn-xs">CSV</a>
+            <a href="{{ url_for('main.download_results', job_id=j.id) }}?format=json"
+               class="btn btn-secondary btn-xs">JSON</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border"
+     style="background:#091828; border-color:#0d2240;">
+  <svg class="w-10 h-10 text-ink-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/>
+  </svg>
+  <p class="text-ink-muted text-sm">Aucun résultat cracké pour le moment.</p>
+  <a href="{{ url_for('main.new_attack') }}" class="btn btn-primary btn-sm">Lancer une attaque</a>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -116,9 +116,51 @@
                   d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
           <span class="text-sm text-ink-muted" id="hash-file-label">Glisser un fichier .txt ou cliquer</span>
-          <input type="file" name="hash_file_upload" accept=".txt,.hash,.lst" class="hidden"
-                 onchange="updateHashFileLabel(this)" />
+          <input type="file" name="hash_file_upload" accept=".txt,.hash,.lst,.log" class="hidden"
+                 onchange="onHashFileChange(this)" />
         </label>
+        <!-- Spinner parsing -->
+        <div id="parse-spinner" class="hidden flex items-center gap-2 mt-2 text-xs" style="color:#5a8fa8;">
+          <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          Analyse du format en cours…
+        </div>
+        <!-- Bannière résultat parsing -->
+        <div id="parse-banner" class="hidden flex flex-col gap-2 mt-3 rounded-lg p-3"
+             style="background:#050b14; border:1px solid #1a3a5c;">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="parse-format-badge" class="text-xs font-bold font-mono px-2 py-0.5 rounded"
+                    style="background:#0d2240; color:#00b4d8; border:1px solid #1a3a5c;"></span>
+              <span id="parse-hash-count" class="text-xs" style="color:#cce8f4;"></span>
+            </div>
+            <div class="flex gap-2">
+              <button type="button" onclick="useRaw()" class="btn btn-secondary btn-xs"
+                      title="Utiliser le fichier tel quel, sans parsing">Brut</button>
+            </div>
+          </div>
+          <!-- Stats rejets -->
+          <div id="parse-rejected-stats" class="hidden flex flex-col gap-1"></div>
+          <!-- Aperçu lignes rejetées pertinentes -->
+          <div id="parse-rejected-preview" class="hidden flex flex-col gap-1">
+            <div class="text-xs font-semibold" style="color:#e05252;">Aperçu lignes rejetées :</div>
+            <pre id="parse-rejected-pre" class="text-xs font-mono rounded p-2 overflow-x-auto"
+                 style="background:#0a0f1a; color:#e05252; border:1px solid #3a1010; max-height:90px;"></pre>
+          </div>
+          <!-- Download rejetées -->
+          <div id="parse-rejected-dl" class="hidden">
+            <button type="button" onclick="downloadRejected()"
+                    class="btn btn-secondary btn-xs" style="color:#e07a30; border-color:#7c3a10;">
+              ↓ Télécharger toutes les lignes rejetées
+            </button>
+          </div>
+          <!-- Erreur : 0 hash -->
+          <div id="parse-zero-error" class="hidden text-xs font-semibold" style="color:#e05252;">
+            ⚠ Aucun hash valide extrait — vérifiez le format ou utilisez le mode Brut.
+          </div>
+        </div>
       </div>
     </div>
 
@@ -207,15 +249,159 @@
       </div>
     </div>
 
-    <div id="opt-mask" class="flex flex-col gap-2 hidden">
-      <label class="form-label">Mask</label>
-      <input name="mask" id="mask-input" class="form-input font-mono" placeholder="?a?a?a?a?a?a?a?a" />
-      <p class="text-xs text-ink-muted">?l=lower ?u=upper ?d=digit ?s=symbol ?a=all</p>
+    <div id="opt-mask" class="flex flex-col gap-3 hidden">
+      <div class="flex items-center justify-between">
+        <label class="form-label" style="margin:0">Mask</label>
+        <button type="button" onclick="toggleMaskBuilder()" id="mask-builder-btn"
+                class="btn btn-secondary btn-xs">Builder</button>
+      </div>
+      <input name="mask" id="mask-input" class="form-input font-mono"
+             placeholder="?a?a?a?a?a?a?a?a" oninput="syncMaskFromInput()" />
+      <!-- Mask builder panel -->
+      <div id="mask-builder-panel" class="hidden flex flex-col gap-2 rounded-lg p-3"
+           style="background:#050b14; border:1px solid #1a3a5c;">
+        <div class="flex flex-wrap gap-1">
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendMask('?l')" title="abcdefghijklmnopqrstuvwxyz">?l</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendMask('?u')" title="ABCDEFGHIJKLMNOPQRSTUVWXYZ">?u</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendMask('?d')" title="0123456789">?d</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendMask('?s')" title="symboles">?s</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendMask('?a')" title="?l+?u+?d+?s">?a</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendMask('?b')" title="0x00-0xff">?b</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendMask('?1')" title="charset perso 1">?1</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendMask('?2')" title="charset perso 2">?2</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendMask('?3')" title="charset perso 3">?3</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendMask('?4')" title="charset perso 4">?4</button>
+        </div>
+        <div class="grid text-xs text-ink-muted" style="grid-template-columns:1fr 1fr; gap:2px 12px;">
+          <span>?l: a-z (26)</span><span>?u: A-Z (26)</span>
+          <span>?d: 0-9 (10)</span><span>?s: spéciaux (32)</span>
+          <span>?a: ?l+?u+?d+?s (95)</span><span>?b: tous bytes (256)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="font-mono text-sm px-3 py-1.5 rounded flex-1 break-all"
+               id="mask-preview" style="background:#0a1828; border:1px solid #1a3a5c; min-height:30px; color:#00b4d8;">—</div>
+          <button type="button" onclick="deleteMaskLast()" class="btn btn-secondary btn-xs" title="Supprimer dernier">⌫</button>
+          <button type="button" onclick="clearMask()" class="btn btn-secondary btn-xs" title="Effacer tout">✕</button>
+        </div>
+        <div class="text-xs text-ink-muted">
+          Longueur : <span id="mask-len" class="text-accent font-mono">0</span> position(s).
+          ?1–?4 = charsets personnalisés — définissez-les ci-dessous.
+        </div>
+        <!-- Custom charset inputs — apparaissent dynamiquement quand ?1-?4 sont dans le mask -->
+        <div id="custom-charset-rows" class="hidden flex flex-col gap-2 pt-2"
+             style="border-top:1px solid #1a3a5c; margin-top:4px;">
+          <div class="text-xs font-semibold" style="color:#a78bfa;">Charsets personnalisés :</div>
+          <div id="cc-row-1" class="hidden flex items-center gap-1.5">
+            <span class="font-mono text-xs font-bold flex-shrink-0" style="color:#a78bfa; width:20px;">?1</span>
+            <div class="flex gap-1 flex-shrink-0">
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(1,'?l')">?l</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(1,'?u')">?u</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(1,'?d')">?d</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(1,'?s')">?s</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(1,'?a')">?a</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(1,'?b')">?b</button>
+            </div>
+            <input type="text" id="cc-input-1" class="form-input font-mono text-xs flex-1"
+                   placeholder="?l?u ou abc123" maxlength="128" />
+          </div>
+          <div id="cc-row-2" class="hidden flex items-center gap-1.5">
+            <span class="font-mono text-xs font-bold flex-shrink-0" style="color:#a78bfa; width:20px;">?2</span>
+            <div class="flex gap-1 flex-shrink-0">
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(2,'?l')">?l</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(2,'?u')">?u</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(2,'?d')">?d</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(2,'?s')">?s</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(2,'?a')">?a</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(2,'?b')">?b</button>
+            </div>
+            <input type="text" id="cc-input-2" class="form-input font-mono text-xs flex-1"
+                   placeholder="?l?u ou abc123" maxlength="128" />
+          </div>
+          <div id="cc-row-3" class="hidden flex items-center gap-1.5">
+            <span class="font-mono text-xs font-bold flex-shrink-0" style="color:#a78bfa; width:20px;">?3</span>
+            <div class="flex gap-1 flex-shrink-0">
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(3,'?l')">?l</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(3,'?u')">?u</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(3,'?d')">?d</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(3,'?s')">?s</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(3,'?a')">?a</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(3,'?b')">?b</button>
+            </div>
+            <input type="text" id="cc-input-3" class="form-input font-mono text-xs flex-1"
+                   placeholder="?l?u ou abc123" maxlength="128" />
+          </div>
+          <div id="cc-row-4" class="hidden flex items-center gap-1.5">
+            <span class="font-mono text-xs font-bold flex-shrink-0" style="color:#a78bfa; width:20px;">?4</span>
+            <div class="flex gap-1 flex-shrink-0">
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(4,'?l')">?l</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(4,'?u')">?u</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(4,'?d')">?d</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(4,'?s')">?s</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(4,'?a')">?a</button>
+              <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendCC(4,'?b')">?b</button>
+            </div>
+            <input type="text" id="cc-input-4" class="form-input font-mono text-xs flex-1"
+                   placeholder="?l?u ou abc123" maxlength="128" />
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="opt-rules" class="flex flex-col gap-2">
-      <label class="form-label">Fichier de règles (optionnel)</label>
-      <input name="rules" class="form-input" placeholder="/usr/share/hashcat/rules/best64.rule" />
+      <div class="flex items-center justify-between">
+        <label class="form-label" style="margin:0">Fichier de règles (optionnel)</label>
+        <button type="button" onclick="toggleRuleBuilder()" id="rule-builder-btn"
+                class="btn btn-secondary btn-xs">Builder</button>
+      </div>
+      <select name="rules" id="rules-select" class="form-input">
+        <option value="">— Aucune —</option>
+        {% for r in rules %}
+        <option value="{{ r.path }}">{{ r.name }}</option>
+        {% endfor %}
+      </select>
+      <!-- Rule builder panel -->
+      <div id="rule-builder-panel" class="hidden flex flex-col gap-2 rounded-lg p-3"
+           style="background:#050b14; border:1px solid #1a3a5c;">
+        <div class="text-xs text-ink-muted">Construisez une règle hashcat.
+          Chaque ligne = 1 variante appliquée à chaque mot de la wordlist.</div>
+        <div class="flex flex-wrap gap-1">
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule(':')">: rien</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('l')">l minus.</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('u')">u majusc.</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('c')">c Cap.</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('C')">C iCap.</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('r')">r reverse</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('d')">d dup.</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('f')">f reflect</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('{')">{ rot.↑</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('}')">} rot.↓</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule('[')">[ del 1er</button>
+          <button type="button" class="btn btn-secondary btn-xs font-mono" onclick="appendRule(']')">] del der.</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendRuleWithParam('$','Char à append (1 car.)')">$ append</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendRuleWithParam('^','Char à prepend (1 car.)')">^ prepend</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendRuleWithParam2('s','Remplacer X par Y (2 cars)')">s subst.</button>
+          <button type="button" class="btn btn-primary btn-xs font-mono" onclick="appendRuleWithParam('@','Char à purger (1 car.)')">@ purger</button>
+        </div>
+        <div class="flex items-center gap-1">
+          <div class="font-mono text-sm px-3 py-1.5 rounded flex-1 break-all"
+               id="rule-line-display" style="background:#0a1828; border:1px solid #1a3a5c; min-height:30px; color:#00b4d8;">—</div>
+          <button type="button" onclick="deleteRuleLast()" class="btn btn-secondary btn-xs">⌫</button>
+          <button type="button" onclick="clearRuleLine()" class="btn btn-secondary btn-xs">✕</button>
+        </div>
+        <div>
+          <div class="text-xs text-ink-muted mb-1">Lignes dans le fichier :</div>
+          <textarea id="rule-file-content" class="form-input font-mono text-xs w-full" rows="4"
+                    placeholder="(vide — ajoutez des lignes)"></textarea>
+        </div>
+        <div class="flex gap-2 items-center">
+          <button type="button" onclick="addRuleLine()" class="btn btn-secondary btn-xs">+ Ajouter la ligne</button>
+          <div class="flex-1"></div>
+          <input type="text" id="rule-save-name" class="form-input text-xs" style="width:130px"
+                 placeholder="nom" value="custom" />
+          <button type="button" onclick="saveRule()" class="btn btn-primary btn-xs">Sauvegarder et utiliser</button>
+        </div>
+        <div id="rule-save-msg" class="text-xs hidden"></div>
+      </div>
     </div>
   </div>
 
@@ -295,10 +481,45 @@
   </div>
   {% endif %}
 
-  <button type="submit" class="btn btn-primary w-full py-3 rounded-xl justify-center text-base">
+  <!-- Templates -->
+  <div class="rounded-xl border p-4 flex flex-col gap-2" style="background:#091828; border-color:#0d2240;">
+    <div class="flex items-center justify-between">
+      <label class="form-label">Templates (optionnel)</label>
+      <button type="button" onclick="toggleTemplatesPanel()" class="btn btn-secondary btn-xs" id="tpl-toggle-btn">
+        Mes templates
+      </button>
+    </div>
+    <div id="templates-panel" class="hidden flex flex-col gap-2">
+      <div id="tpl-list" class="text-xs text-ink-muted">Chargement…</div>
+    </div>
+    <div class="flex items-center gap-2 mt-1">
+      <input type="text" id="tpl-save-name" class="form-input text-xs flex-1" placeholder="Nom du template" />
+      <button type="button" onclick="saveTemplate()" class="btn btn-secondary btn-xs">
+        Sauvegarder comme template
+      </button>
+    </div>
+  </div>
+
+  <!-- Planification différée -->
+  <div class="rounded-xl border p-4 flex flex-col gap-2" style="background:#091828; border-color:#0d2240;">
+    <label class="form-label">Planifier (optionnel)</label>
+    <div class="flex items-center gap-2">
+      <input type="datetime-local" name="scheduled_at" id="scheduled-at" class="form-input flex-1"
+             oninput="onScheduleChange()" />
+      <button type="button" onclick="clearSchedule()" class="btn btn-secondary btn-xs">Maintenant</button>
+    </div>
+    <p class="text-xs text-ink-muted">Laissez vide pour lancer immédiatement.</p>
+  </div>
+
+  <button type="submit" id="submit-btn"
+          class="btn btn-primary w-full py-3 rounded-xl justify-center text-base">
     Lancer l'attaque
   </button>
 
+  <input type="hidden" name="custom_charset1" id="cc-hidden-1" value="">
+  <input type="hidden" name="custom_charset2" id="cc-hidden-2" value="">
+  <input type="hidden" name="custom_charset3" id="cc-hidden-3" value="">
+  <input type="hidden" name="custom_charset4" id="cc-hidden-4" value="">
 </form>
 
 <script>
@@ -322,7 +543,7 @@
     var ru = document.getElementById('opt-rules');
     wl.classList.toggle('hidden', [3].includes(m));
     mk.classList.toggle('hidden', [0, 1].includes(m));
-    ru.classList.toggle('hidden', m !== 0);
+    ru.classList.toggle('hidden', m === 3);
   }
 
   function setHashMode(mode) {
@@ -335,11 +556,18 @@
     tabFile.className  = isPaste ? 'btn btn-secondary btn-xs' : 'btn btn-primary btn-xs';
   }
 
-  function updateHashFileLabel(input) {
+  /* ── Parse hashes (secretsdump / mimikatz) ─────────────────────────── */
+  var _rawContent    = '';
+  var _rejectedLines = [];
+
+  function onHashFileChange(input) {
     var f = input.files[0];
-    document.getElementById('hash-file-label').textContent = f
-      ? f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)'
-      : 'Glisser un fichier .txt ou cliquer';
+    if (!f) return;
+    document.getElementById('hash-file-label').textContent =
+      f.name + ' (' + (f.size / 1024).toFixed(1) + ' KB)';
+    var reader = new FileReader();
+    reader.onload = function(e) { triggerParse(f.name, e.target.result); };
+    reader.readAsText(f);
   }
 
   function handleHashDrop(e) {
@@ -349,7 +577,137 @@
     if (!file) return;
     var input = e.currentTarget.querySelector('input[type=file]');
     var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
-    updateHashFileLabel(input);
+    onHashFileChange(input);
+  }
+
+  function triggerParse(filename, content) {
+    _rawContent = content;
+    document.getElementById('parse-spinner').classList.remove('hidden');
+    document.getElementById('parse-banner').classList.add('hidden');
+
+    fetch('{{ url_for("main.api_parse_hashes") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('input[name=csrf_token]').value
+      },
+      body: JSON.stringify({ content: content })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      document.getElementById('parse-spinner').classList.add('hidden');
+      showParseBanner(data, filename);
+    })
+    .catch(function() {
+      document.getElementById('parse-spinner').classList.add('hidden');
+    });
+  }
+
+  function showParseBanner(data, filename) {
+    _rejectedLines = data.rejected_all || [];
+
+    var banner   = document.getElementById('parse-banner');
+    var badge    = document.getElementById('parse-format-badge');
+    var countEl  = document.getElementById('parse-hash-count');
+    var statsEl  = document.getElementById('parse-rejected-stats');
+    var previewEl= document.getElementById('parse-rejected-preview');
+    var preEl    = document.getElementById('parse-rejected-pre');
+    var dlEl     = document.getElementById('parse-rejected-dl');
+    var zeroEl   = document.getElementById('parse-zero-error');
+
+    banner.classList.remove('hidden');
+    statsEl.classList.add('hidden');
+    previewEl.classList.add('hidden');
+    dlEl.classList.add('hidden');
+    zeroEl.classList.add('hidden');
+
+    // Format badge
+    var fmtLabels = { secretsdump: 'Secretsdump', mimikatz: 'Mimikatz', raw: 'Brut' };
+    var fmtColors = {
+      secretsdump: { bg:'#0d2a1a', color:'#4caf91', border:'#1a5c30' },
+      mimikatz:    { bg:'#1a1f35', color:'#7ba7ff', border:'#2a3560' },
+      raw:         { bg:'#0d2240', color:'#00b4d8', border:'#1a3a5c' },
+    };
+    var fc = fmtColors[data.format] || fmtColors.raw;
+    badge.textContent = fmtLabels[data.format] || data.format;
+    badge.style.background  = fc.bg;
+    badge.style.color       = fc.color;
+    badge.style.borderColor = fc.border;
+
+    // Si format raw → rien à parser, on utilise tel quel
+    if (data.format === 'raw') {
+      countEl.textContent = data.hash_count + ' hash(es) — aucun parsing nécessaire';
+      // Auto-detect quand même
+      if (data.candidates && data.candidates.length) applyCandidate(data.candidates[0]);
+      updateHashCount();
+      return;
+    }
+
+    // Hashes extraits → on bascule en mode paste avec le résultat
+    if (data.hash_count > 0) {
+      setHashMode('paste');
+      document.getElementById('hash_content').value = data.hashes;
+      updateHashCount();
+      countEl.textContent = data.hash_count + ' hash(es) extrait(s)';
+      if (data.candidates && data.candidates.length) applyCandidate(data.candidates[0]);
+    } else {
+      zeroEl.classList.remove('hidden');
+      countEl.textContent = '0 hash extrait';
+    }
+
+    // Stats rejets
+    if (data.rejected_count > 0) {
+      statsEl.innerHTML = '<div class="text-xs font-semibold mb-1" style="color:#e07a30;">'
+        + data.rejected_count + ' ligne(s) rejetée(s) :</div>';
+      Object.entries(data.rejected_cat).forEach(function(kv) {
+        var row = document.createElement('div');
+        row.className = 'flex items-center gap-2 text-xs';
+        row.innerHTML = '<span style="color:#5a8fa8; min-width:160px;">' + kv[0] + '</span>'
+          + '<span class="font-mono font-bold" style="color:#e07a30;">× ' + kv[1] + '</span>';
+        statsEl.appendChild(row);
+      });
+      statsEl.classList.remove('hidden');
+
+      // Aperçu lignes pertinentes
+      var preview = (data.rejected_preview || []).filter(function(l) { return l.trim(); });
+      if (preview.length) {
+        preEl.textContent = preview.join('\n');
+        previewEl.classList.remove('hidden');
+      }
+      // Download
+      dlEl.classList.remove('hidden');
+    }
+  }
+
+  function useRaw() {
+    if (!_rawContent) return;
+    setHashMode('paste');
+    document.getElementById('hash_content').value = _rawContent;
+    updateHashCount();
+    document.getElementById('parse-banner').classList.add('hidden');
+  }
+
+  function downloadRejected() {
+    if (!_rejectedLines.length) return;
+    var blob = new Blob([_rejectedLines.join('\n')], { type: 'text/plain' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'rejected_lines.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function applyCandidate(c) {
+    if (!c || c.hashcat == null) return;
+    document.getElementById('hash_type_hidden').value      = c.hashcat;
+    document.getElementById('hash_type_name_hidden').value = c.name;
+    document.getElementById('hash_type_display').value     = c.hashcat;
+    document.getElementById('hash_type_name_display').value= c.name;
+    var banner = document.getElementById('selected-type-banner');
+    document.getElementById('selected-type-label').textContent = '-m ' + c.hashcat + ' — ' + c.name;
+    banner.classList.remove('hidden');
+    document.getElementById('detect-results').classList.add('hidden');
+    document.getElementById('manual-type-input').classList.add('hidden');
   }
 
   function setWlMode(mode) {
@@ -499,7 +857,339 @@
     }, 500);
   });
 
-  // ── Pré-remplissage depuis un job existant ────────────────────────────────
+  // ── Rule builder — modal inline ──────────────────────────────────────────
+  var _ruleParamCb = null;
+  var _ruleModal   = null;
+
+  function _getRuleModal() {
+    if (_ruleModal) return _ruleModal;
+    _ruleModal = document.createElement('dialog');
+    _ruleModal.style.cssText = 'background:#091828; border:1px solid #1a3a5c; border-radius:12px; color:#cce8f4; padding:20px; min-width:280px;';
+    _ruleModal.innerHTML = [
+      '<form method="dialog" style="display:flex; flex-direction:column; gap:12px;">',
+      '  <div id="rmod-label" class="text-sm font-semibold text-ink"></div>',
+      '  <input id="rmod-input" class="form-input font-mono" type="text" placeholder="" maxlength="8" />',
+      '  <div class="flex gap-2 justify-end">',
+      '    <button type="button" onclick="document.querySelector(\'dialog\').close(\'cancel\')" class="btn btn-secondary btn-xs">Annuler</button>',
+      '    <button type="button" onclick="_ruleModalConfirm()" class="btn btn-primary btn-xs">OK</button>',
+      '  </div>',
+      '</form>',
+    ].join('');
+    document.body.appendChild(_ruleModal);
+    return _ruleModal;
+  }
+
+  function _ruleModalConfirm() {
+    var val = document.getElementById('rmod-input').value;
+    _ruleModal.close('ok');
+    if (_ruleParamCb) { _ruleParamCb(val); _ruleParamCb = null; }
+  }
+
+  function _showRuleModal(label, placeholder, cb) {
+    var m = _getRuleModal();
+    document.getElementById('rmod-label').textContent   = label;
+    document.getElementById('rmod-input').value          = '';
+    document.getElementById('rmod-input').placeholder    = placeholder;
+    _ruleParamCb = cb;
+    m.showModal();
+    setTimeout(function() { document.getElementById('rmod-input').focus(); }, 50);
+  }
+
+  function appendRuleWithParam(prefix, label) {
+    _showRuleModal(label, '1 caractère', function(val) {
+      var c = val.trim().slice(0, 1);
+      if (!c) return;
+      _ruleLine += (_ruleLine ? ' ' : '') + prefix + c;
+      updateRuleDisplay();
+    });
+  }
+
+  function appendRuleWithParam2(prefix, label) {
+    _showRuleModal(label + ' (ex: aA)', '2 caractères', function(val) {
+      val = val.trim();
+      if (val.length < 2) { return; }
+      _ruleLine += (_ruleLine ? ' ' : '') + prefix + val[0] + val[1];
+      updateRuleDisplay();
+    });
+  }
+
+  // ── Templates ─────────────────────────────────────────────────────────────
+  var _tplLoaded = false;
+
+  function toggleTemplatesPanel() {
+    var panel = document.getElementById('templates-panel');
+    var btn   = document.getElementById('tpl-toggle-btn');
+    var isHidden = panel.classList.toggle('hidden');
+    btn.textContent = isHidden ? 'Mes templates' : 'Fermer';
+    if (!isHidden && !_tplLoaded) {
+      _tplLoaded = true;
+      fetch('/api/templates')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var list = document.getElementById('tpl-list');
+          if (!data.length) {
+            list.textContent = 'Aucun template sauvegardé.';
+            return;
+          }
+          list.innerHTML = data.map(function(t) {
+            return '<div class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-card" style="background:#050b14;">' +
+              '<span class="flex-1 font-medium text-ink text-xs">' + t.name +
+              ' <span class="text-ink-muted">(-m' + (t.hash_type || 0) + ' mode ' + (t.attack_mode || 0) + ')</span></span>' +
+              '<button type="button" class="btn btn-secondary btn-xs" onclick=\'applyTemplate(' + JSON.stringify(t) + ')\'>Appliquer</button>' +
+              '<form method="POST" action="/templates/' + t.id + '/delete" class="inline">' +
+              '<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />' +
+              '<button type="submit" class="btn btn-xs" style="color:#e05252;" title="Supprimer">✕</button>' +
+              '</form>' +
+              '</div>';
+          }).join('');
+        })
+        .catch(function() {
+          document.getElementById('tpl-list').textContent = 'Erreur de chargement.';
+        });
+    }
+  }
+
+  function applyTemplate(t) {
+    if (t.hash_type !== null && t.hash_type !== undefined) {
+      document.getElementById('hash_type_hidden').value  = t.hash_type;
+      document.getElementById('hash_type_display').value = t.hash_type;
+      if (t.hash_type_name) selectHashType(t.hash_type, t.hash_type_name);
+    }
+    setMode(t.attack_mode || 0);
+    if (t.mask) {
+      var mi = document.getElementById('mask-input');
+      if (mi) { mi.value = t.mask; _maskStr = t.mask; updateMaskPreview(); }
+    }
+    if (t.wordlist) {
+      var wl = document.getElementById('wl-select');
+      if (wl) for (var o of wl.options) { if (o.value === t.wordlist) { o.selected = true; break; } }
+    }
+    if (t.rules) {
+      var rs = document.getElementById('rules-select');
+      if (rs) for (var o of rs.options) { if (o.value === t.rules) { o.selected = true; break; } }
+    }
+    document.getElementById('templates-panel').classList.add('hidden');
+    document.getElementById('tpl-toggle-btn').textContent = 'Mes templates';
+  }
+
+  function saveTemplate() {
+    var name = document.getElementById('tpl-save-name').value.trim();
+    if (!name) { document.getElementById('tpl-save-name').focus(); return; }
+    var f = document.createElement('form');
+    f.method = 'POST'; f.action = '/templates/save'; f.style.display = 'none';
+    var fields = {
+      csrf_token:     '{{ csrf_token() }}',
+      name:           name,
+      hash_type:      document.getElementById('hash_type_hidden').value,
+      hash_type_name: document.getElementById('hash_type_name_hidden').value,
+      attack_mode:    document.getElementById('attack_mode_hidden').value,
+      wordlist:       (document.getElementById('wl-select') || {}).value || '',
+      mask:           (document.getElementById('mask-input') || {}).value || '',
+      rules:          (document.getElementById('rules-select') || {}).value || '',
+      extra_args:     (document.querySelector('input[name="extra_args"]') || {}).value || '',
+    };
+    for (var k in fields) {
+      var i = document.createElement('input');
+      i.type = 'hidden'; i.name = k; i.value = fields[k];
+      f.appendChild(i);
+    }
+    document.body.appendChild(f); f.submit();
+  }
+
+  // ── Planification ─────────────────────────────────────────────────────────
+  (function() {
+    var el = document.getElementById('scheduled-at');
+    if (el) el.min = new Date(new Date().getTime() + 60000).toISOString().slice(0,16);
+  })();
+
+  function onScheduleChange() {
+    var dt  = document.getElementById('scheduled-at').value;
+    var btn = document.getElementById('submit-btn');
+    if (dt) {
+      btn.textContent = '⏰ Planifier pour ' + dt.replace('T', ' ');
+      btn.style.background = '#0d3a60';
+    } else {
+      btn.textContent = 'Lancer l\'attaque';
+      btn.style.background = '';
+    }
+  }
+
+  function clearSchedule() {
+    document.getElementById('scheduled-at').value = '';
+    onScheduleChange();
+  }
+
+  // ── Mask builder ──────────────────────────────────────────────────────────
+  var _maskStr = '';
+
+  function toggleMaskBuilder() {
+    var panel = document.getElementById('mask-builder-panel');
+    var btn   = document.getElementById('mask-builder-btn');
+    var open  = panel.classList.toggle('hidden');
+    btn.textContent = open ? 'Builder' : 'Fermer';
+    if (!open) {
+      _maskStr = document.getElementById('mask-input').value;
+      updateMaskPreview();
+    }
+  }
+
+  function appendMask(token) {
+    _maskStr += token;
+    document.getElementById('mask-input').value = _maskStr;
+    updateMaskPreview();
+  }
+
+  function deleteMaskLast() {
+    // Tokens are always 2-char (?x)
+    if (_maskStr.length >= 2 && _maskStr[_maskStr.length - 2] === '?') {
+      _maskStr = _maskStr.slice(0, -2);
+    } else if (_maskStr.length > 0) {
+      _maskStr = _maskStr.slice(0, -1);
+    }
+    document.getElementById('mask-input').value = _maskStr;
+    updateMaskPreview();
+  }
+
+  function clearMask() {
+    _maskStr = '';
+    document.getElementById('mask-input').value = '';
+    updateMaskPreview();
+  }
+
+  function syncMaskFromInput() {
+    _maskStr = document.getElementById('mask-input').value;
+    updateMaskPreview();
+  }
+
+  function updateMaskPreview() {
+    var preview = document.getElementById('mask-preview');
+    var lenEl   = document.getElementById('mask-len');
+    if (!preview) return;
+    var s = _maskStr || '';
+    var positions = s.match(/\?./g) || [];
+    var len = positions.length;
+    preview.textContent = s || '—';
+    if (lenEl) lenEl.textContent = len;
+    updateCustomCharsetVisibility();
+  }
+
+  // ── Custom charsets ───────────────────────────────────────────────────────
+  function updateCustomCharsetVisibility() {
+    var mask = _maskStr || '';
+    var anyVisible = false;
+    for (var i = 1; i <= 4; i++) {
+      var row = document.getElementById('cc-row-' + i);
+      if (row) {
+        var used = mask.indexOf('?' + i) !== -1;
+        row.classList.toggle('hidden', !used);
+        if (used) anyVisible = true;
+      }
+    }
+    var container = document.getElementById('custom-charset-rows');
+    if (container) container.classList.toggle('hidden', !anyVisible);
+  }
+
+  function appendCC(n, token) {
+    var inp = document.getElementById('cc-input-' + n);
+    if (inp) inp.value += token;
+  }
+
+  // ── Rule builder ──────────────────────────────────────────────────────────
+  var _ruleLine = '';
+
+  function toggleRuleBuilder() {
+    var panel = document.getElementById('rule-builder-panel');
+    var btn   = document.getElementById('rule-builder-btn');
+    var isNowHidden = panel.classList.toggle('hidden');
+    btn.textContent = isNowHidden ? 'Builder' : 'Fermer';
+  }
+
+  function updateRuleDisplay() {
+    var el = document.getElementById('rule-line-display');
+    if (el) el.textContent = _ruleLine || '—';
+  }
+
+  function appendRule(fn) {
+    _ruleLine += (_ruleLine ? ' ' : '') + fn;
+    updateRuleDisplay();
+  }
+
+  function deleteRuleLast() {
+    var parts = _ruleLine.trim().split(/\s+/);
+    parts.pop();
+    _ruleLine = parts.join(' ');
+    updateRuleDisplay();
+  }
+
+  function clearRuleLine() {
+    _ruleLine = '';
+    updateRuleDisplay();
+  }
+
+  function addRuleLine() {
+    if (!_ruleLine.trim()) return;
+    var ta = document.getElementById('rule-file-content');
+    ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + _ruleLine.trim();
+    clearRuleLine();
+  }
+
+  async function saveRule() {
+    var content = document.getElementById('rule-file-content').value.trim();
+    if (!content) {
+      // If only current line, save it directly
+      if (_ruleLine.trim()) {
+        document.getElementById('rule-file-content').value = _ruleLine.trim();
+        content = _ruleLine.trim();
+        clearRuleLine();
+      } else {
+        alert('Règle vide.'); return;
+      }
+    }
+    var name = document.getElementById('rule-save-name').value.trim() || 'custom';
+    var msg  = document.getElementById('rule-save-msg');
+    try {
+      var res = await fetch('/api/rules/save', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'X-CSRFToken': '{{ csrf_token() }}'},
+        body: JSON.stringify({rule: content, name: name}),
+      });
+      var data = await res.json();
+      if (!res.ok) { throw new Error(data.error || res.statusText); }
+      // Add option to select and select it
+      var sel = document.getElementById('rules-select');
+      var existing = Array.from(sel.options).find(o => o.value === data.path);
+      if (existing) {
+        existing.selected = true;
+      } else {
+        var opt = new Option(data.name, data.path, true, true);
+        sel.add(opt);
+      }
+      msg.textContent = '✓ Sauvegardé : ' + data.name;
+      msg.style.color = '#34d399';
+      msg.classList.remove('hidden');
+      setTimeout(() => msg.classList.add('hidden'), 3000);
+    } catch(e) {
+      msg.textContent = 'Erreur : ' + e.message;
+      msg.style.color = '#ef4444';
+      msg.classList.remove('hidden');
+    }
+  }
+
+  // ── Inject custom charsets dans hidden fields avant submit ───────────────
+  document.addEventListener('DOMContentLoaded', function() {
+    var form = document.querySelector('form[method="POST"]');
+    if (form) {
+      form.addEventListener('submit', function() {
+        for (var i = 1; i <= 4; i++) {
+          var inp    = document.getElementById('cc-input-' + i);
+          var hidden = document.getElementById('cc-hidden-' + i);
+          if (inp && hidden) hidden.value = inp.value.trim();
+        }
+      });
+    }
+  });
+
+  // ── Pré-remplissage depuis un job existant ou import ─────────────────────
   document.addEventListener('DOMContentLoaded', function() {
     if (typeof window._PREFILL === 'undefined') return;
     var p = window._PREFILL;
@@ -514,7 +1204,15 @@
     }
     if (p.mask) {
       var maskInput = document.getElementById('mask-input');
-      if (maskInput) maskInput.value = p.mask;
+      if (maskInput) { maskInput.value = p.mask; _maskStr = p.mask; updateMaskPreview(); }
+    }
+    if (p.rules) {
+      var rSel = document.getElementById('rules-select');
+      if (rSel) {
+        for (var opt of rSel.options) {
+          if (opt.value.endsWith(p.rules)) { opt.selected = true; break; }
+        }
+      }
     }
     if (p.wordlist) {
       var wlSel = document.getElementById('wl-select');
@@ -530,6 +1228,13 @@
         var cb = document.querySelector('input[name="devices"][value="' + did.trim() + '"]');
         if (cb && !cb.disabled) cb.checked = true;
       });
+    }
+    if (p._import_hashes) {
+      var ta = document.getElementById('hash_content');
+      if (ta) {
+        ta.value = p._import_hashes.trim();
+        updateHashCount();
+      }
     }
   });
 </script>

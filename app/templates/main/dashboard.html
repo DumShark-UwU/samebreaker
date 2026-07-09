@@ -38,8 +38,22 @@
     <button onclick="filterJobs('failed')"    class="btn btn-sm btn-secondary"  id="f-failed">Échoués</button>
     <button onclick="filterJobs('stopped')"   class="btn btn-sm btn-secondary"  id="f-stopped">Stoppés</button>
     <button onclick="filterJobs('pending')"   class="btn btn-sm btn-secondary"  id="f-pending">En attente</button>
+    <button onclick="filterJobs('scheduled')" class="btn btn-sm btn-secondary"  id="f-scheduled">Planifiés</button>
   </div>
-  <a href="{{ url_for('main.new_attack') }}" class="btn btn-primary btn-sm ml-auto">
+  <form method="POST" action="{{ url_for('main.import_job') }}" enctype="multipart/form-data"
+        class="inline ml-auto flex items-center gap-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+    <label class="btn btn-secondary btn-sm cursor-pointer flex items-center gap-1.5">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      Importer
+      <input type="file" name="import_file" accept=".zip" class="hidden"
+             onchange="this.form.submit()" />
+    </label>
+  </form>
+  <a href="{{ url_for('main.new_attack') }}" class="btn btn-primary btn-sm">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
     </svg>
@@ -72,6 +86,7 @@
           data-created="{{ job.created_at }}"
           data-started="{{ job.started_at or '' }}"
           data-finished="{{ job.finished_at or '' }}"
+          data-scheduled="{{ job.scheduled_at or '' }}"
           style="border-color:#0d2240;">
         <td class="px-4 py-3 text-ink-muted">{{ job.id }}</td>
         <td class="px-4 py-3 font-medium text-ink">{{ job.name }}</td>
@@ -126,7 +141,7 @@
 
   function filterJobs(status) {
     _activeFilter = status;
-    ['all','running','completed','failed','stopped','pending'].forEach(function(s) {
+    ['all','running','completed','failed','stopped','pending','scheduled'].forEach(function(s) {
       var btn = document.getElementById('f-' + s);
       if (btn) btn.className = s === status ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
     });
@@ -207,6 +222,12 @@
       var s      = _parseDate(row.dataset.started);
       var f      = _parseDate(row.dataset.finished);
       if (!cell) return;
+      if (status === 'scheduled') {
+        var sched = row.dataset.scheduled;
+        cell.textContent = sched ? '⏰ ' + sched.slice(0,16).replace('T',' ') : 'planifié';
+        cell.style.color = '#a78bfa';
+        return;
+      }
       if (!s) { cell.textContent = status === 'pending' ? 'en attente' : '—'; return; }
       var end = f || now;
       var secs = Math.floor((end - s) / 1000);
@@ -218,11 +239,40 @@
   _updateDurations();
   setInterval(_updateDurations, 1000);
 
-  // ── Auto-refresh si des jobs tournent ─────────────────────────────────────
-  var _hasRunning = document.querySelectorAll('.job-row[data-status="running"]').length > 0;
-  if (_hasRunning) {
-    setTimeout(function() { location.reload(); }, 30000);
+  // ── Live status : fetch /api/jobs/status toutes les 5 s ──────────────────
+  var _ACTIVE = ['running', 'pending', 'scheduled'];
+
+  function _applyStatusUpdate(jobs) {
+    var anyActive = false;
+    jobs.forEach(function(j) {
+      if (_ACTIVE.includes(j.status)) anyActive = true;
+      var row = document.querySelector('.job-row[data-id="' + j.id + '"]');
+      if (!row) return;
+      if (row.dataset.status === j.status) return; // rien n'a changé
+      row.dataset.status = j.status;
+      if (j.started_at)  row.dataset.started  = j.started_at;
+      if (j.finished_at) row.dataset.finished  = j.finished_at;
+      var badge = row.querySelector('.badge');
+      if (badge) { badge.className = 'badge badge-' + j.status; badge.textContent = j.status; }
+      filterJobs(_activeFilter); // re-applique le filtre actif
+    });
+    // Dès que plus rien ne tourne : reload unique pour rafraîchir les boutons etc.
+    if (!anyActive) { clearInterval(_statusTimer); location.reload(); }
   }
+
+  var _statusTimer = null;
+  (function() {
+    var initialActive = document.querySelectorAll(
+      '.job-row[data-status="running"],.job-row[data-status="pending"],.job-row[data-status="scheduled"]'
+    ).length > 0;
+    if (!initialActive) return;
+    _statusTimer = setInterval(function() {
+      fetch('/api/jobs/status')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) { if (data) _applyStatusUpdate(data); })
+        .catch(function() {});
+    }, 5000);
+  })();
 
   // Init tri par défaut (ID desc)
   document.getElementById('th-id') && document.getElementById('th-id').classList.add('sort-desc');

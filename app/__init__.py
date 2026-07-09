@@ -4,6 +4,8 @@ import json
 import os
 import secrets
 import sqlite3
+import threading
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -16,6 +18,31 @@ from .models import User
 
 login_manager = LoginManager()
 csrf = CSRFProtect()
+
+
+@login_manager.request_loader
+def load_user_from_request(request):
+    """Authentification par token API (header X-API-Token ou ?token=)."""
+    token = request.headers.get("X-API-Token") or request.args.get("token")
+    if not token:
+        return None
+    try:
+        from .db import db_conn
+        from .models import User
+        with db_conn() as conn:
+            row = conn.execute(
+                "SELECT user_id FROM api_tokens WHERE token=?", (token,)
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE api_tokens SET last_used=CURRENT_TIMESTAMP WHERE token=?",
+                    (token,),
+                )
+                conn.commit()
+                return User.get(row["user_id"])
+    except Exception:
+        pass
+    return None
 
 
 def _load_instance_config(app: Flask) -> None:
@@ -55,6 +82,28 @@ def _load_instance_config(app: Flask) -> None:
     from . import hashcat_utils, jobs as jobs_module
     hashcat_utils.HASHCAT_FORCE      = bool(cfg.get("hashcat_force", True))
     jobs_module.MAX_CONCURRENT_JOBS  = int(cfg.get("max_concurrent_jobs", 5))
+    jobs_module.USER_HASH_AUTO       = bool(cfg.get("user_hash_auto", True))
+
+
+def _start_scheduler() -> None:
+    """Thread de planification : lance les jobs différés arrivés à échéance (polling 30s)."""
+    def _run() -> None:
+        while True:
+            time.sleep(30)
+            try:
+                from .db import db_conn
+                from . import jobs as job_mgr
+                with db_conn() as conn:
+                    rows = conn.execute(
+                        "SELECT id FROM jobs WHERE status='scheduled'"
+                        " AND datetime(scheduled_at) <= datetime('now')"
+                    ).fetchall()
+                for row in rows:
+                    job_mgr.start_job(row["id"])
+            except Exception:
+                pass
+
+    threading.Thread(target=_run, daemon=True, name="sb-scheduler").start()
 
 
 def create_app() -> Flask:
@@ -68,6 +117,7 @@ def create_app() -> Flask:
     init_db()
     reset_stale_jobs()
     seed_default_admin()
+    _start_scheduler()
 
     from .auth    import bp as auth_bp
     from .main    import bp as main_bp

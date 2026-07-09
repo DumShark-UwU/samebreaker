@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import shutil
 from typing import Optional
@@ -98,6 +99,96 @@ def get_wordlists() -> list[dict]:
     return found
 
 
+_LM_EMPTY = "aad3b435b51404eeaad3b435b51404ee"
+
+# secretsdump: [DOMAIN\]user:RID:LM32:NT32::: (avec ou sans domaine)
+_RE_SECRETSDUMP = re.compile(
+    r'^(?:[^:\\]+\\)?([^:]+):\d+:([0-9a-fA-F]{32}):([0-9a-fA-F]{32}):::\s*$'
+)
+# mimikatz sekurlsa — lignes hash
+_RE_MIMI_NTLM = re.compile(r'^\s*\*?\s*(?:Hash\s+)?NTLM\s*:\s*([0-9a-fA-F]{32})\s*$', re.I)
+_RE_MIMI_LM   = re.compile(r'^\s*\*?\s*(?:Hash\s+)?LM\s*:\s*([0-9a-fA-F]{32})\s*$', re.I)
+_RE_MIMI_USER = re.compile(r'^\s*\*?\s*Username\s*:\s*(.+)$', re.I)
+_RE_MIMI_NULL = re.compile(r'^\s*\*?\s*(?:Hash\s+)?NTLM\s*:\s*\(null\)\s*$', re.I)
+
+
+def parse_hashes(content: str) -> dict:
+    """
+    Détecte et parse les formats secretsdump et mimikatz.
+    Retourne un dict avec :
+      format           : "secretsdump" | "mimikatz" | "raw"
+      hashes           : list[str]  — hashes propres prêts pour hashcat
+      usermap          : dict[hash, list[str]]  — mapping hash→[users]
+      rejected         : list[str]  — lignes rejetées brutes
+      rejected_cat     : dict[str, int]  — catégories de rejets avec compteurs
+      rejected_details : list[tuple[str, str]]  — (ligne, catégorie) par ligne rejetée
+    """
+    lines = [l for l in content.splitlines() if l.strip()]
+    if not lines:
+        return {"format": "raw", "hashes": [], "usermap": {}, "rejected": [],
+                "rejected_cat": {}, "rejected_details": []}
+
+    def _empty() -> dict:
+        return {"hashes": [], "usermap": {}, "rejected": [], "rejected_cat": {}, "rejected_details": []}
+
+    def _reject(state: dict, line: str, cat: str) -> None:
+        state["rejected"].append(line)
+        state["rejected_details"].append((line, cat))
+        state["rejected_cat"][cat] = state["rejected_cat"].get(cat, 0) + 1
+
+    # ── Détection secretsdump ──────────────────────────────────────────────
+    sd_matches = [_RE_SECRETSDUMP.match(l) for l in lines]
+    sd_ratio   = sum(1 for m in sd_matches if m) / len(lines)
+    if sd_ratio >= 0.5:
+        s = _empty()
+        for line, m in zip(lines, sd_matches):
+            if not m:
+                _reject(s, line, "Format non reconnu")
+                continue
+            user, lm, nt = m.group(1), m.group(2).lower(), m.group(3).lower()
+            if nt == "31d6cfe0d16ae931b73c59d7e0c089c0":
+                _reject(s, line, "Compte désactivé / mot de passe vide (NT vide)")
+                continue
+            s["hashes"].append(nt)
+            s["usermap"].setdefault(nt, []).append(user)
+        return {"format": "secretsdump", **s}
+
+    # ── Détection mimikatz ─────────────────────────────────────────────────
+    mimi_score = sum(1 for l in lines
+                     if _RE_MIMI_NTLM.match(l) or _RE_MIMI_NULL.match(l)
+                     or _RE_MIMI_USER.match(l) or _RE_MIMI_LM.match(l))
+    if mimi_score / len(lines) >= 0.05:
+        s = _empty()
+        current_user: Optional[str] = None
+        for line in lines:
+            if _RE_MIMI_USER.match(line):
+                current_user = _RE_MIMI_USER.match(line).group(1).strip()
+                continue
+            if _RE_MIMI_NULL.match(line):
+                _reject(s, line, "NTLM (null) — pas de creds en mémoire")
+                current_user = None
+                continue
+            m = _RE_MIMI_NTLM.match(line)
+            if m:
+                nt = m.group(1).lower()
+                s["hashes"].append(nt)
+                if current_user:
+                    s["usermap"].setdefault(nt, []).append(current_user)
+                current_user = None
+                continue
+            m = _RE_MIMI_LM.match(line)
+            if m:
+                lm = m.group(1).lower()
+                cat = "LM vide (hash nul)" if lm == _LM_EMPTY else "LM hash (type différent, -m 3000)"
+                _reject(s, line, cat)
+                continue
+            _reject(s, line, "Métadonnées / contexte")
+        return {"format": "mimikatz", **s}
+
+    return {"format": "raw", "hashes": lines, "usermap": {}, "rejected": [],
+            "rejected_cat": {}, "rejected_details": []}
+
+
 def detect_hash(hash_str: str) -> list[dict]:
     """Identifie les types de hash possibles, classés par probabilité décroissante."""
     try:
@@ -175,7 +266,16 @@ def build_command(job: dict) -> list[str]:
     if HASHCAT_FORCE:
         cmd.append("--force")
 
-    if job.get("extra_args"):
-        cmd += job["extra_args"].split()
+    # Ajouter --username si format user:hash détecté et pas déjà dans extra_args
+    extra = job.get("extra_args") or ""
+    try:
+        extra_parts = shlex.split(extra)
+    except ValueError:
+        extra_parts = [extra] if extra else []
+    if job.get("has_usermap") and "--username" not in extra_parts:
+        cmd.append("--username")
+
+    if extra_parts:
+        cmd += extra_parts
 
     return cmd

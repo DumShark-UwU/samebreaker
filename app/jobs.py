@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import threading
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -16,6 +19,7 @@ STATUS_RUNNING   = "running"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED    = "failed"
 STATUS_STOPPED   = "stopped"
+STATUS_SCHEDULED = "scheduled"
 
 TERMINAL_STATUSES = {STATUS_COMPLETED, STATUS_FAILED, STATUS_STOPPED}
 
@@ -24,13 +28,50 @@ _HASHCAT_OK_CODES = {0, 1}
 
 # Configurable depuis __init__.py via config.json
 MAX_CONCURRENT_JOBS: int = 5
+USER_HASH_AUTO: bool = True
 
 _procs: dict[int, subprocess.Popen] = {}
 _procs_lock = threading.Lock()
 
+# Détecte user:hash (ex: admin:5f4dcc3b... ou user:$2y$10$...)
+_USER_HASH_RE = re.compile(
+    r'^([^:\s]+):(\$[^\s:]+|[0-9a-fA-F]{16,})$', re.I
+)
+
+_RE_SPEED = re.compile(r'Speed\.#[\d*]+\.+:\s+([\d.]+)\s+([A-Za-z]*H/s)', re.I)
+_RE_PROG  = re.compile(r'Progress\.+:\s*\d+/\d+\s*\((\d+\.\d+)%\)', re.I)
+_RE_REC   = re.compile(r'Recovered\.+:\s*(\d+)/', re.I)
+_SNAP_SEC = 30
+
+
+def _to_hs(val: str, unit: str) -> float:
+    mult = {'h/s': 1, 'kh/s': 1e3, 'mh/s': 1e6, 'gh/s': 1e9, 'th/s': 1e12, 'ph/s': 1e15}
+    return float(val) * mult.get(unit.lower(), 1)
+
 
 def _restore_path(job_id: int) -> str:
     return f"{_JOBS_DIR}/{job_id}.restore"
+
+
+def _parse_user_hash(lines: list[str]) -> Optional[dict]:
+    """
+    Détecte le format user:hash et retourne {hash: [users]}.
+    Retourne None si < 80% des lignes correspondent.
+    """
+    non_empty = [l for l in lines if l]
+    if not non_empty:
+        return None
+    pairs = []
+    for line in non_empty:
+        m = _USER_HASH_RE.match(line)
+        if m:
+            pairs.append((m.group(1), m.group(2)))
+    if len(pairs) < len(non_empty) * 0.8:
+        return None
+    mapping: dict[str, list[str]] = {}
+    for user, h in pairs:
+        mapping.setdefault(h, []).append(user)
+    return mapping
 
 
 def can_resume(job_id: int) -> bool:
@@ -83,6 +124,15 @@ def create_job(
         log_file  = f"{_JOBS_DIR}/{job_id}.log"
         pot_file  = f"{_JOBS_DIR}/{job_id}.pot"
 
+        # Détection user:hash : activée si USER_HASH_AUTO ou --username explicite dans extra_args
+        _force_username = bool(extra_args and "--username" in extra_args.split())
+        if USER_HASH_AUTO or _force_username:
+            input_lines = [l.strip() for l in hash_content.strip().splitlines() if l.strip()]
+            usermap = _parse_user_hash(input_lines)
+            if usermap:
+                with open(f"{_JOBS_DIR}/{job_id}.usermap", "w") as _uf:
+                    json.dump(usermap, _uf)
+
         with open(hash_file, "w") as f:
             f.write(hash_content.strip() + "\n")
 
@@ -115,6 +165,7 @@ def start_job(job_id: int) -> bool:
     job_dict = dict(row)
     job_dict.setdefault("workload", 2)
     job_dict["restore_file"] = _restore_path(job_id)
+    job_dict["has_usermap"]  = os.path.exists(f"{_JOBS_DIR}/{job_id}.usermap")
     cmd       = build_command(job_dict)
     log_file  = row["log_file"]
     hash_file = row["hash_file"]
@@ -158,6 +209,10 @@ def start_job(job_id: int) -> bool:
             status = STATUS_FAILED
             pot_seen: set[str] = set()
             line_count = 0
+            _last_snap = 0.0
+            _snap_speed: Optional[float] = None
+            _snap_prog:  Optional[float] = None
+            _snap_crak:  int = 0
             try:
                 proc = subprocess.Popen(
                     cmd,
@@ -187,6 +242,31 @@ def start_job(job_id: int) -> bool:
                             for wh in user_webhooks:
                                 if "password_found" in wh["events"]:
                                     send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
+                    m = _RE_SPEED.search(line)
+                    if m:
+                        try: _snap_speed = _to_hs(m.group(1), m.group(2))
+                        except Exception: pass
+                    m = _RE_PROG.search(line)
+                    if m:
+                        try: _snap_prog = float(m.group(1))
+                        except Exception: pass
+                    m = _RE_REC.search(line)
+                    if m:
+                        try: _snap_crak = int(m.group(1))
+                        except Exception: pass
+                    _now = time.time()
+                    if _snap_prog is not None and _now - _last_snap >= _SNAP_SEC:
+                        _last_snap = _now
+                        try:
+                            with db_conn() as _sc:
+                                _sc.execute(
+                                    "INSERT INTO job_snapshots (job_id, speed_hs, progress_pct, cracked)"
+                                    " VALUES (?,?,?,?)",
+                                    (job_id, _snap_speed, _snap_prog, _snap_crak),
+                                )
+                                _sc.commit()
+                        except Exception:
+                            pass
 
                 proc.wait()
                 status = STATUS_COMPLETED if proc.returncode in _HASHCAT_OK_CODES else STATUS_FAILED
@@ -198,6 +278,21 @@ def start_job(job_id: int) -> bool:
                     for wh in user_webhooks:
                         if "password_found" in wh["events"]:
                             send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
+
+                # Snapshot final — capturé même si hashcat a tout trouvé en potfile
+                _final_prog = _snap_prog if _snap_prog is not None else (
+                    100.0 if status == STATUS_COMPLETED else 0.0
+                )
+                try:
+                    with db_conn() as _sc:
+                        _sc.execute(
+                            "INSERT INTO job_snapshots (job_id, speed_hs, progress_pct, cracked)"
+                            " VALUES (?,?,?,?)",
+                            (job_id, _snap_speed, _final_prog, len(pot_seen)),
+                        )
+                        _sc.commit()
+                except Exception:
+                    pass
 
             except FileNotFoundError:
                 lf.write("[SameBreaker] ERREUR : hashcat introuvable dans le PATH.\n")
@@ -288,6 +383,10 @@ def resume_job(job_id: int) -> bool:
             status = STATUS_FAILED
             pot_seen: set[str] = set()
             line_count = 0
+            _last_snap = 0.0
+            _snap_speed: Optional[float] = None
+            _snap_prog:  Optional[float] = None
+            _snap_crak:  int = 0
             try:
                 proc = subprocess.Popen(
                     cmd,
@@ -315,6 +414,31 @@ def resume_job(job_id: int) -> bool:
                             for wh in user_webhooks:
                                 if "password_found" in wh["events"]:
                                     send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
+                    m = _RE_SPEED.search(line)
+                    if m:
+                        try: _snap_speed = _to_hs(m.group(1), m.group(2))
+                        except Exception: pass
+                    m = _RE_PROG.search(line)
+                    if m:
+                        try: _snap_prog = float(m.group(1))
+                        except Exception: pass
+                    m = _RE_REC.search(line)
+                    if m:
+                        try: _snap_crak = int(m.group(1))
+                        except Exception: pass
+                    _now = time.time()
+                    if _snap_prog is not None and _now - _last_snap >= _SNAP_SEC:
+                        _last_snap = _now
+                        try:
+                            with db_conn() as _sc:
+                                _sc.execute(
+                                    "INSERT INTO job_snapshots (job_id, speed_hs, progress_pct, cracked)"
+                                    " VALUES (?,?,?,?)",
+                                    (job_id, _snap_speed, _snap_prog, _snap_crak),
+                                )
+                                _sc.commit()
+                        except Exception:
+                            pass
                 proc.wait()
                 status = STATUS_COMPLETED if proc.returncode in _HASHCAT_OK_CODES else STATUS_FAILED
                 new = _poll_pot(pot_seen)
@@ -323,6 +447,21 @@ def resume_job(job_id: int) -> bool:
                     for wh in user_webhooks:
                         if "password_found" in wh["events"]:
                             send_webhook(wh["url"], payload, wh.get("webhook_type", "auto"))
+
+                _final_prog = _snap_prog if _snap_prog is not None else (
+                    100.0 if status == STATUS_COMPLETED else 0.0
+                )
+                try:
+                    with db_conn() as _sc:
+                        _sc.execute(
+                            "INSERT INTO job_snapshots (job_id, speed_hs, progress_pct, cracked)"
+                            " VALUES (?,?,?,?)",
+                            (job_id, _snap_speed, _final_prog, len(pot_seen)),
+                        )
+                        _sc.commit()
+                except Exception:
+                    pass
+
             except FileNotFoundError:
                 lf.write("[SameBreaker] ERREUR : hashcat introuvable.\n")
             except OSError as exc:
@@ -394,9 +533,59 @@ def hide_job(job_id: int, hidden_by: int) -> bool:
     return True
 
 
+def schedule_job(job_id: int, scheduled_at: str) -> None:
+    """Bascule un job en statut 'scheduled' avec une date d'exécution différée."""
+    with db_conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET status=?, scheduled_at=? WHERE id=?",
+            (STATUS_SCHEDULED, scheduled_at, job_id),
+        )
+        conn.commit()
+
+
+def cancel_scheduled(job_id: int) -> bool:
+    """Annule un job planifié (status → stopped). Retourne False si non planifié."""
+    with db_conn() as conn:
+        row = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not row or row["status"] != STATUS_SCHEDULED:
+            return False
+        conn.execute(
+            "UPDATE jobs SET status=?, finished_at=CURRENT_TIMESTAMP WHERE id=?",
+            (STATUS_STOPPED, job_id),
+        )
+        conn.commit()
+    return True
+
+
 def get_results(job) -> list[str]:
     pot = job["pot_file"]
-    if pot and os.path.exists(pot):
-        with open(pot) as f:
-            return [line.strip() for line in f if line.strip()]
-    return []
+    if not pot or not os.path.exists(pot):
+        return []
+
+    with open(pot) as f:
+        lines = [l.strip() for l in f if l.strip()]
+
+    usermap_path = f"{_JOBS_DIR}/{job['id']}.usermap"
+    if not os.path.exists(usermap_path):
+        return lines
+
+    try:
+        with open(usermap_path) as f:
+            usermap: dict[str, list[str]] = json.load(f)
+    except Exception:
+        return lines
+
+    sorted_hashes = sorted(usermap.keys(), key=len, reverse=True)
+    results: list[str] = []
+    for line in lines:
+        matched = False
+        for h in sorted_hashes:
+            if line.startswith(h + ':'):
+                clearpass = line[len(h) + 1:]
+                for user in usermap[h]:
+                    results.append(f"{user}:{clearpass}")
+                matched = True
+                break
+        if not matched:
+            results.append(line)
+    return results

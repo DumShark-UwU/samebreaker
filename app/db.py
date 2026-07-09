@@ -50,6 +50,38 @@ def init_db() -> None:
                 created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token      TEXT    NOT NULL UNIQUE,
+                label      TEXT    NOT NULL DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_used  DATETIME
+            );
+
+            CREATE TABLE IF NOT EXISTS job_snapshots (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id       INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                ts           DATETIME DEFAULT CURRENT_TIMESTAMP,
+                speed_hs     REAL,
+                progress_pct REAL,
+                cracked      INTEGER DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS job_templates (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                name           TEXT    NOT NULL,
+                hash_type      INTEGER,
+                hash_type_name TEXT,
+                attack_mode    INTEGER NOT NULL DEFAULT 0,
+                wordlist       TEXT,
+                mask           TEXT,
+                rules          TEXT,
+                extra_args     TEXT,
+                created_by     INTEGER REFERENCES users(id),
+                created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE TABLE IF NOT EXISTS jobs (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
                 name           TEXT    NOT NULL,
@@ -89,6 +121,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         ("jobs",     "hidden",        "INTEGER NOT NULL DEFAULT 0"),
         ("jobs",     "hidden_at",     "DATETIME"),
         ("jobs",     "hidden_by",     "INTEGER"),
+        ("jobs",     "scheduled_at",  "DATETIME"),
         ("webhooks", "webhook_type",  "TEXT NOT NULL DEFAULT 'auto'"),
     ]
     for table, col, definition in migrations:

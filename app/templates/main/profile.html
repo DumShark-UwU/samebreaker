@@ -232,6 +232,16 @@ var _WH_PLACEHOLDERS = {
   generic: "https://...",
   auto:    "https://discord.com/api/webhooks/...",
 };
+function copyNewToken() {
+  var val = document.getElementById('new-token-val');
+  var btn = document.getElementById('copy-tok-btn');
+  if (!val || !btn) return;
+  navigator.clipboard.writeText(val.textContent.trim()).then(function() {
+    btn.textContent = '✓ Copié !';
+    setTimeout(function() { btn.textContent = 'Copier'; }, 2000);
+  });
+}
+
 function onTypeChange(val) {
   var hint = document.getElementById('wh-hint');
   var urlInput = document.getElementById('wh-url');
@@ -240,6 +250,79 @@ function onTypeChange(val) {
 }
 onTypeChange('auto');
 </script>
+
+  <!-- Section API Tokens -->
+  <div id="api-tokens" class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+    <div class="text-xs text-ink-muted uppercase tracking-wider mb-1">Tokens API</div>
+
+    {% if new_token %}
+    <div class="flex flex-col gap-2 p-4 rounded-xl" style="background:#071a0e; border:1px solid #34d399;">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-ok"></span>
+        <span class="text-sm font-semibold text-ok">Token « {{ new_token.label }} » créé — copiez-le maintenant, il ne sera plus affiché.</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <code id="new-token-val" class="flex-1 text-xs font-mono px-3 py-2 rounded-lg select-all break-all"
+              style="background:#0d2240; color:#00b4d8; border:1px solid #1a3a5c; word-break:break-all;">{{ new_token.value }}</code>
+        <button onclick="copyNewToken()" class="btn btn-secondary btn-xs shrink-0" id="copy-tok-btn">Copier</button>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if api_tokens %}
+    <div class="flex flex-col gap-2">
+      {% for tok in api_tokens %}
+      <div class="flex items-center justify-between gap-3 px-3 py-3 rounded-lg" style="background:#0d2240; border:1px solid #1a3a5c;">
+        <div class="flex flex-col gap-0.5">
+          <span class="text-sm font-medium text-ink">{{ tok.label }}</span>
+          <span class="text-xs font-mono" style="color:#3a6a8a;">
+            Créé {{ tok.created_at[:10] }}
+            {% if tok.last_used %} · Utilisé {{ tok.last_used[:10] }}{% else %} · Jamais utilisé{% endif %}
+          </span>
+        </div>
+        <form method="POST" action="{{ url_for('main.profile_token_delete', tok_id=tok.id) }}"
+              onsubmit="return confirm('Révoquer ce token ?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <button type="submit" class="btn btn-xs" style="background:#2a0d0d; color:#e05252; border:1px solid #3a1515;">
+            Révoquer
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm" style="color:#3a6a8a;">Aucun token actif.</p>
+    {% endif %}
+
+    <details class="group">
+      <summary class="cursor-pointer text-sm font-medium list-none flex items-center gap-2" style="color:#00b4d8;">
+        <span class="transition-transform group-open:rotate-90">▶</span>
+        Générer un token
+      </summary>
+      <form method="POST" action="{{ url_for('main.profile_token_create') }}" class="flex gap-2 mt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <input name="label" type="text" class="form-input" placeholder="ex: script-cron, curl-local…" maxlength="64" />
+        <button type="submit" class="btn btn-primary btn-sm shrink-0">Générer</button>
+      </form>
+    </details>
+
+    <div style="background:#0a1e35; border:1px solid #0d2240; border-radius:8px; padding:12px 14px; font-size:12px;">
+      <div style="color:#5a8fa8; margin-bottom:6px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Utilisation</div>
+      <div class="flex flex-col gap-2">
+        <div>
+          <span style="color:#5a8fa8; font-size:11px;">Header HTTP</span>
+          <code class="block mt-1 px-2 py-1 rounded text-xs font-mono" style="background:#0d2240; color:#00b4d8;">X-API-Token: &lt;token&gt;</code>
+        </div>
+        <div>
+          <span style="color:#5a8fa8; font-size:11px;">Query param</span>
+          <code class="block mt-1 px-2 py-1 rounded text-xs font-mono" style="background:#0d2240; color:#00b4d8;">/api/jobs/1/results?token=&lt;token&gt;</code>
+        </div>
+        <div style="color:#5a8fa8; font-size:11px; margin-top:4px;">
+          Routes disponibles : <code style="color:#cce8f4;">/api/jobs/*</code> · <code style="color:#cce8f4;">/api/detect</code> · <code style="color:#cce8f4;">/api/devices</code> · <code style="color:#cce8f4;">/api/sysinfo</code>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Section 2FA -->
   <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">

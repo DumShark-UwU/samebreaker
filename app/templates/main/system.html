@@ -117,23 +117,90 @@
 
 <!-- Wordlists -->
 <div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
-  <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Wordlists disponibles</h2>
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Wordlists disponibles</h2>
+    <a href="{{ url_for('library.index') }}" class="text-xs" style="color:#00b4d8;">+ Bibliothèque ↗</a>
+  </div>
   {% if wordlists %}
     <div class="flex flex-col gap-1 max-h-64 overflow-y-auto">
       {% for w in wordlists %}
       <div class="flex items-center justify-between px-3 py-2 rounded text-xs" style="background:#0d2240;">
         <span class="text-ink font-mono">{{ w.name }}</span>
-        <span class="text-ink-muted">{{ (w.size / 1024 / 1024) | round(1) }} MB</span>
+        <div class="flex items-center gap-3">
+          <span class="text-ink-muted">{{ (w.size / 1024 / 1024) | round(1) }} MB</span>
+          <form method="POST" action="{{ url_for('main.system_delete_file') }}"
+                onsubmit="return confirm('Supprimer {{ w.name }} ?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="type" value="wordlist" />
+            <input type="hidden" name="filename" value="{{ w.name }}" />
+            <button type="submit" style="color:#e05252; font-size:11px; background:none; border:none; cursor:pointer;">✕</button>
+          </form>
+        </div>
       </div>
       {% endfor %}
     </div>
   {% else %}
-    <p class="text-sm text-ink-muted">
-      Aucune wordlist trouvée dans
-      <code class="text-accent">/usr/share/wordlists</code>,
-      <code class="text-accent">~/wordlists</code> ou
-      <code class="text-accent">wordlists/</code>.
-    </p>
+    <p class="text-sm text-ink-muted">Aucune wordlist — <a href="{{ url_for('library.index') }}" style="color:#00b4d8;">Bibliothèque ↗</a></p>
+  {% endif %}
+</div>
+
+<!-- Règles -->
+<div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Règles hashcat disponibles</h2>
+    <a href="{{ url_for('library.index') }}" class="text-xs" style="color:#00b4d8;">+ Bibliothèque ↗</a>
+  </div>
+  {% if rules %}
+    <div class="flex flex-col gap-1 max-h-48 overflow-y-auto">
+      {% for r in rules %}
+      <div class="flex items-center justify-between px-3 py-2 rounded text-xs" style="background:#0d2240;">
+        <span class="text-ink font-mono">{{ r.name }}</span>
+        <div class="flex items-center gap-3">
+          <span class="text-ink-muted">{{ (r.size / 1024) | round(1) }} KB</span>
+          {% if r.deletable %}
+          <form method="POST" action="{{ url_for('main.system_delete_file') }}"
+                onsubmit="return confirm('Supprimer {{ r.name }} ?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="type" value="rule" />
+            <input type="hidden" name="filename" value="{{ r.name }}" />
+            <button type="submit" style="color:#e05252; font-size:11px; background:none; border:none; cursor:pointer;">✕</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-ink-muted">Aucune règle — <a href="{{ url_for('library.index') }}" style="color:#00b4d8;">Bibliothèque ↗</a></p>
+  {% endif %}
+</div>
+
+<!-- Masks -->
+<div class="rounded-xl border p-5 flex flex-col gap-4" style="background:#091828; border-color:#0d2240;">
+  <div class="flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-ink-muted uppercase tracking-wider">Masks disponibles</h2>
+    <a href="{{ url_for('library.index') }}" class="text-xs" style="color:#00b4d8;">+ Bibliothèque ↗</a>
+  </div>
+  {% if masks %}
+    <div class="flex flex-col gap-1 max-h-48 overflow-y-auto">
+      {% for m in masks %}
+      <div class="flex items-center justify-between px-3 py-2 rounded text-xs" style="background:#0d2240;">
+        <span class="text-ink font-mono">{{ m.name }}</span>
+        <div class="flex items-center gap-3">
+          <span class="text-ink-muted">{{ (m.size / 1024) | round(1) }} KB</span>
+          <form method="POST" action="{{ url_for('main.system_delete_file') }}"
+                onsubmit="return confirm('Supprimer {{ m.name }} ?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="type" value="mask" />
+            <input type="hidden" name="filename" value="{{ m.name }}" />
+            <button type="submit" style="color:#e05252; font-size:11px; background:none; border:none; cursor:pointer;">✕</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-ink-muted">Aucun mask — <a href="{{ url_for('library.index') }}" style="color:#00b4d8;">Bibliothèque ↗</a></p>
   {% endif %}
 </div>
 
