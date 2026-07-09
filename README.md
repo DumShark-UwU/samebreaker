@@ -10,7 +10,7 @@ Interface web multi-utilisateurs pour hashcat — gestion de jobs de cassage de 
 
 ### Page de connexion
 
-![Login](img/screenshots/01_login.png)
+![Login](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/01_login.png)
 
 Authentification avec identifiant / mot de passe. Support 2FA TOTP optionnel (Google Authenticator, Authy, Bitwarden). Rate limiting intégré (10 tentatives / IP). Bannière persistante tant que le mot de passe par défaut `admin/admin` n'est pas changé.
 
@@ -18,7 +18,7 @@ Authentification avec identifiant / mot de passe. Support 2FA TOTP optionnel (Go
 
 ### Dashboard
 
-![Dashboard](img/screenshots/02_dashboard.png)
+![Dashboard](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/02_dashboard.png)
 
 Vue centrale de tous les jobs. Filtres par statut (En cours / Terminés / Échoués / Stoppés / En attente / **Planifiés**). Colonne Durée mise à jour chaque seconde. Auto-refresh 30 s si des jobs sont actifs. Import ZIP depuis le bouton en haut à droite. Badge sidebar animé quand des jobs tournent.
 
@@ -26,7 +26,7 @@ Vue centrale de tous les jobs. Filtres par statut (En cours / Terminés / Échou
 
 ### Nouvelle attaque
 
-![Nouvelle attaque](img/screenshots/03_new_attack.png)
+![Nouvelle attaque](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/03_new_attack.png)
 
 Formulaire complet d'une attaque :
 - **Hash** : coller ou uploader un `.txt`, détection automatique du type au collé (via `name_that_hash`), compteur de hash live
@@ -43,7 +43,7 @@ Formulaire complet d'une attaque :
 
 ### Mask Builder
 
-![Mask Builder](img/screenshots/03b_mask_builder.png)
+![Mask Builder](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/03b_mask_builder.png)
 
 Constructeur visuel de mask (mode 3, 6, 7). Boutons `?l ?u ?d ?s ?a ?b ?1 ?2 ?3 ?4` pour composer le mask position par position. Preview live du mask construit et compteur de positions. Touches ⌫ (supprimer dernier token) et ✕ (effacer tout). Synchronisation bidirectionnelle avec le champ texte.
 
@@ -51,7 +51,7 @@ Constructeur visuel de mask (mode 3, 6, 7). Boutons `?l ?u ?d ?s ?a ?b ?1 ?2 ?3 
 
 ### Charsets personnalisés (`?1`–`?4`)
 
-![Custom charset](img/screenshots/03c_custom_charset.png)
+![Custom charset](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/03c_custom_charset.png)
 
 Dès qu'un token `?1`, `?2`, `?3` ou `?4` apparaît dans le mask, la section **Charsets personnalisés** s'affiche automatiquement sous le builder. Chaque ligne active propose des boutons rapides (`?l ?u ?d ?s ?a ?b`) et un champ texte libre pour composer le charset (ex: `?l?u` = minuscules + majuscules, ou `abc123` littéral). Les valeurs sont injectées automatiquement dans la commande hashcat via `--custom-charset1=...` au moment du submit — pour tous les rôles, sans passer par les extra args.
 
@@ -59,7 +59,7 @@ Dès qu'un token `?1`, `?2`, `?3` ou `?4` apparaît dans le mask, la section **C
 
 ### Rule Builder
 
-![Rule Builder](img/screenshots/03d_rule_builder.png)
+![Rule Builder](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/03d_rule_builder.png)
 
 Constructeur de règles hashcat intégré. 12 fonctions sans paramètre (`: l u c C r d f { } [ ]`) et 4 avec paramètre (`$ ^ s @`) via une dialog HTML native (sans `window.prompt()`). Les lignes s'accumulent dans une textarea éditable. **Sauvegarder et utiliser** envoie la règle vers `instance/rules/` et la sélectionne automatiquement dans le dropdown.
 
@@ -67,7 +67,7 @@ Constructeur de règles hashcat intégré. 12 fonctions sans paramètre (`: l u 
 
 ### Détail d'un job
 
-![Job detail](img/screenshots/11_job_detail.png)
+![Job detail](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/11_job_detail.png)
 
 Page de suivi d'un job avec :
 - Résultats crackés en temps réel avec **copie par ligne** + "Tout copier"
@@ -80,7 +80,7 @@ Page de suivi d'un job avec :
 
 ### Bibliothèque
 
-![Bibliothèque](img/screenshots/04_library.png)
+![Bibliothèque](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/04_library.png)
 
 Catalogue curaté de wordlists (rockyou, weakpass, SecLists…), règles (best64, OneRuleToRuleThemAll…) et masks. Téléchargement streamé avec barre de progression, extraction automatique (`.7z` / `.tar.gz` / `.gz`). **Crack rate visuel** par barre colorée (vert ≥30 %, orange ≥15 %, rouge <15 %) basé sur les statistiques weakpass.com.
 
@@ -88,7 +88,7 @@ Catalogue curaté de wordlists (rockyou, weakpass, SecLists…), règles (best64
 
 ### Benchmark
 
-![Benchmark](img/screenshots/05_benchmark.png)
+![Benchmark](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/05_benchmark.png)
 
 Lancement/arrêt par l'admin, output hashcat streamen en temps réel via SSE. Permet de mesurer les performances GPU pour chaque algorithme avant de lancer une vraie attaque.
 
@@ -96,7 +96,7 @@ Lancement/arrêt par l'admin, output hashcat streamen en temps réel via SSE. Pe
 
 ### Potfile
 
-![Potfile](img/screenshots/06_potfile.png)
+![Potfile](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/06_potfile.png)
 
 Liste de tous les jobs ayant des résultats crackés. Un clic sur `#id` ouvre le détail du job. Les boutons **TXT / CSV / JSON** téléchargent directement le potfile de cette attaque, sans passer par une vue agrégée.
 
@@ -104,9 +104,9 @@ Liste de tous les jobs ayant des résultats crackés. Un clic sur `#id` ouvre le
 
 ### Administration
 
-![Admin](img/screenshots/07_admin.png)
+![Admin](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/07_admin.png)
 
-![Admin — Utilisateurs](img/screenshots/08_admin_users.png)
+![Admin — Utilisateurs](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/08_admin_users.png)
 
 Panel admin avec gestion des utilisateurs (rôle, GPU assignés, workload profile, statut 2FA, reset TOTP), audit log de tous les jobs, et éditeur de configuration (`config.json`) appliqué à chaud sans redémarrage.
 
@@ -114,7 +114,7 @@ Panel admin avec gestion des utilisateurs (rôle, GPU assignés, workload profil
 
 ### Profil utilisateur
 
-![Profil](img/screenshots/10_profile.png)
+![Profil](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/10_profile.png)
 
 Chaque utilisateur peut changer son mot de passe, configurer ses **webhooks** (Discord, Slack, Teams, ntfy, Signal, Générique), gérer ses **tokens API** (création / révocation, `last_used` tracké), et activer / désactiver son **2FA TOTP**.
 
@@ -122,7 +122,7 @@ Chaque utilisateur peut changer son mot de passe, configurer ses **webhooks** (D
 
 ### Système
 
-![Système](img/screenshots/12_system.png)
+![Système](https://github.com/DumShark-UwU/samebreaker/releases/download/v1.4.1/12_system.png)
 
 Métriques en temps réel : CPU, RAM, Disk, GPU détectés, wordlists et règles installées. Polling toutes les 4 secondes, sans dépendance externe.
 
@@ -485,6 +485,7 @@ Pour les détails d'architecture interne, le schéma de base de données, le cyc
 
 | Version | Changement principal |
 |---------|---------------------|
+| v1.4.1 | Fix bannière parse cachée après extraction (parse-banner hors hash-file-zone) ; captures d'écran v1.4.1 |
 | v1.4.0 | Parse auto secretsdump/mimikatz à l'upload ; tokens API ; scheduler ; stats Chart.js ; mask/rule builder ; import/export ZIP ; user:hash→user:clearpass ; potfile ; templates de jobs ; 65 tests pytest ; extraction 7z via py7zr |
 | v1.3.0 | Bibliothèque wordlists/règles/masks avec téléchargement streamé et crack rate visuel ; métriques système temps réel (CPU/RAM/Disk) ; webhooks multi-services (Slack, Teams, ntfy, Signal) ; cap DOM log 200 éléments |
 | v1.2.2 | Tooltips CSS sur les boutons de mode d'attaque |

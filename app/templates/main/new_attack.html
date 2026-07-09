@@ -119,47 +119,47 @@
           <input type="file" name="hash_file_upload" accept=".txt,.hash,.lst,.log" class="hidden"
                  onchange="onHashFileChange(this)" />
         </label>
-        <!-- Spinner parsing -->
-        <div id="parse-spinner" class="hidden flex items-center gap-2 mt-2 text-xs" style="color:#5a8fa8;">
-          <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-          </svg>
-          Analyse du format en cours…
+      </div>
+      <!-- Spinner parsing (hors hash-file-zone pour rester visible après switch vers paste) -->
+      <div id="parse-spinner" class="hidden flex items-center gap-2 mt-2 text-xs" style="color:#5a8fa8;">
+        <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        Analyse du format en cours…
+      </div>
+      <!-- Bannière résultat parsing -->
+      <div id="parse-banner" class="hidden flex flex-col gap-2 mt-3 rounded-lg p-3"
+           style="background:#050b14; border:1px solid #1a3a5c;">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span id="parse-format-badge" class="text-xs font-bold font-mono px-2 py-0.5 rounded"
+                  style="background:#0d2240; color:#00b4d8; border:1px solid #1a3a5c;"></span>
+            <span id="parse-hash-count" class="text-xs" style="color:#cce8f4;"></span>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" onclick="useRaw()" class="btn btn-secondary btn-xs"
+                    title="Utiliser le fichier tel quel, sans parsing">Brut</button>
+          </div>
         </div>
-        <!-- Bannière résultat parsing -->
-        <div id="parse-banner" class="hidden flex flex-col gap-2 mt-3 rounded-lg p-3"
-             style="background:#050b14; border:1px solid #1a3a5c;">
-          <div class="flex items-center justify-between flex-wrap gap-2">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span id="parse-format-badge" class="text-xs font-bold font-mono px-2 py-0.5 rounded"
-                    style="background:#0d2240; color:#00b4d8; border:1px solid #1a3a5c;"></span>
-              <span id="parse-hash-count" class="text-xs" style="color:#cce8f4;"></span>
-            </div>
-            <div class="flex gap-2">
-              <button type="button" onclick="useRaw()" class="btn btn-secondary btn-xs"
-                      title="Utiliser le fichier tel quel, sans parsing">Brut</button>
-            </div>
-          </div>
-          <!-- Stats rejets -->
-          <div id="parse-rejected-stats" class="hidden flex flex-col gap-1"></div>
-          <!-- Aperçu lignes rejetées pertinentes -->
-          <div id="parse-rejected-preview" class="hidden flex flex-col gap-1">
-            <div class="text-xs font-semibold" style="color:#e05252;">Aperçu lignes rejetées :</div>
-            <pre id="parse-rejected-pre" class="text-xs font-mono rounded p-2 overflow-x-auto"
-                 style="background:#0a0f1a; color:#e05252; border:1px solid #3a1010; max-height:90px;"></pre>
-          </div>
-          <!-- Download rejetées -->
-          <div id="parse-rejected-dl" class="hidden">
-            <button type="button" onclick="downloadRejected()"
-                    class="btn btn-secondary btn-xs" style="color:#e07a30; border-color:#7c3a10;">
-              ↓ Télécharger toutes les lignes rejetées
-            </button>
-          </div>
-          <!-- Erreur : 0 hash -->
-          <div id="parse-zero-error" class="hidden text-xs font-semibold" style="color:#e05252;">
-            ⚠ Aucun hash valide extrait — vérifiez le format ou utilisez le mode Brut.
-          </div>
+        <!-- Stats rejets -->
+        <div id="parse-rejected-stats" class="hidden flex flex-col gap-1"></div>
+        <!-- Aperçu lignes rejetées pertinentes -->
+        <div id="parse-rejected-preview" class="hidden flex flex-col gap-1">
+          <div class="text-xs font-semibold" style="color:#e05252;">Aperçu lignes rejetées :</div>
+          <pre id="parse-rejected-pre" class="text-xs font-mono rounded p-2 overflow-x-auto"
+               style="background:#0a0f1a; color:#e05252; border:1px solid #3a1010; max-height:90px;"></pre>
+        </div>
+        <!-- Download rejetées -->
+        <div id="parse-rejected-dl" class="hidden">
+          <button type="button" onclick="downloadRejected()"
+                  class="btn btn-secondary btn-xs" style="color:#e07a30; border-color:#7c3a10;">
+            ↓ Télécharger toutes les lignes rejetées
+          </button>
+        </div>
+        <!-- Erreur : 0 hash -->
+        <div id="parse-zero-error" class="hidden text-xs font-semibold" style="color:#e05252;">
+          ⚠ Aucun hash valide extrait — vérifiez le format ou utilisez le mode Brut.
         </div>
       </div>
     </div>
